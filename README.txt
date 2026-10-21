@@ -24,7 +24,7 @@ The values are saved in the visitor's browser with localStorage.
 For permanent default values, edit DEFAULT_CONTACT in script.js:
 
 const DEFAULT_CONTACT = {
-  phone: "027 555 1234",
+  phone: "0800326002",
   website: "xterra.co.nz",
   email: "hello@xterra.co.nz"
 };

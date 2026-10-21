@@ -1,4 +1,4 @@
-const DEFAULT_PHONE = "027 555 1234";
+const DEFAULT_PHONE = "0800326002";
 
 function applyPhone(phone) {
   document.querySelectorAll("[data-phone]").forEach(el => {
