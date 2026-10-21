@@ -310,7 +310,24 @@
     </div>
   </footer>
 
+  <!-- ================= SENDING MODAL ================= -->
+  <div class="modal fade" id="sendingModal" tabindex="-1" aria-labelledby="sendingModalLabel"
+       aria-modal="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content text-center p-4">
+        <div class="modal-body">
+          <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status" aria-hidden="true"></div>
+          <h2 class="h5" id="sendingModalLabel">Sending your enquiry…</h2>
+          <p class="text-secondary mb-3">Please wait, don't close or refresh this page.</p>
+          <div class="progress" role="progressbar" aria-label="Sending enquiry">
+            <div class="progress-bar progress-bar-striped progress-bar-animated w-100"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="script.js?v=2"></script>
+  <script src="script.js?v=3"></script>
 </body>
 </html>
