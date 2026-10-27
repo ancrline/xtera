@@ -1,4 +1,4 @@
-XTERRA Exterior Cleaning Services — HTML landing page
+XTERA Exterior Cleaning Services — HTML landing page
 
 FILES
 -----
@@ -25,7 +25,7 @@ For permanent default values, edit DEFAULT_CONTACT in script.js:
 
 const DEFAULT_CONTACT = {
   phone: "0800326002",
-  website: "xterra.co.nz",
+  website: "xtera.co.nz",
   email: "infoxtera@gmail.com"
 };
 
