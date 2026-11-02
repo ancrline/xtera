@@ -26,7 +26,7 @@ body {
   background: #fff;
 }
 
-h1, h2, h3, .brand-word {
+h1, h2, h3 {
   font-family: "Montserrat", sans-serif;
 }
 
@@ -57,24 +57,12 @@ h3 { font-weight: 800; }
   border-bottom: 1px solid rgba(255,255,255,.08);
 }
 
-.brand-mark {
-  width: 42px;
-  height: 42px;
-  display: inline-grid;
-  place-items: center;
-  background: linear-gradient(135deg, var(--blue), #116eea);
-  color: #fff;
-  font-weight: 900;
-  font-size: 28px;
-  font-style: italic;
-  clip-path: polygon(0 0, 100% 0, 72% 100%, 0 100%);
-}
-
-.brand-word {
-  color: #fff;
-  font-size: 1.55rem;
-  font-weight: 900;
-  letter-spacing: .03em;
+.brand-logo {
+  height: 44px;
+  width: auto;
+  background: #fff;
+  border-radius: 8px;
+  padding: 5px 12px;
 }
 
 .nav-link {

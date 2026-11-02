@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Job Detail | XTERA Job Reports</title>
+  <link rel="icon" type="image/png" href="../assets/logo/xtera-logo-square-icon-512x512.png">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div id="appNavbar"></div>
+
+  <main class="container-fluid py-4 px-lg-5" id="jobMain" style="max-width: 1200px;">
+    <div class="page-header">
+      <div>
+        <h1 class="h3 mb-1"><span id="jobNumber"></span> <span id="jobStatusBadge"></span></h1>
+        <div class="status-stepper" id="statusStepper"></div>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="dashboard.html" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i> Back</a>
+        <a href="#" class="btn btn-outline-primary" id="reportBtn"><i class="bi bi-file-earmark-text me-1"></i> View report</a>
+      </div>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-lg-7">
+        <!-- Client & property -->
+        <div class="card mb-4">
+          <div class="card-header">Client &amp; property</div>
+          <div class="card-body">
+            <dl class="row mb-0">
+              <dt class="col-sm-4">Client</dt><dd class="col-sm-8" id="clientName"></dd>
+              <dt class="col-sm-4">Email</dt><dd class="col-sm-8" id="clientEmail"></dd>
+              <dt class="col-sm-4">Phone</dt><dd class="col-sm-8" id="clientPhone"></dd>
+              <dt class="col-sm-4">Property</dt><dd class="col-sm-8" id="propertyAddress"></dd>
+              <dt class="col-sm-4">Work type</dt><dd class="col-sm-8" id="workType"></dd>
+              <dt class="col-sm-4">Created</dt><dd class="col-sm-8" id="createdAt"></dd>
+              <dt class="col-sm-4">Description</dt><dd class="col-sm-8" id="description" style="white-space: pre-wrap;"></dd>
+            </dl>
+          </div>
+        </div>
+
+        <!-- Notes -->
+        <div class="card mb-4">
+          <div class="card-header">Site notes</div>
+          <div class="card-body">
+            <div id="notesList"></div>
+            <form id="noteForm" class="mt-3">
+              <div class="mb-2">
+                <textarea class="form-control" id="noteText" rows="2" placeholder="Add a note (onsite updates, issues, progress)…" required></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i> Add note</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Photos -->
+        <div class="card mb-4">
+          <div class="card-header">Before &amp; after photos</div>
+          <div class="card-body">
+            <div class="row g-4">
+              <div class="col-md-6">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h2 class="h6 mb-0">Before</h2>
+                  <label class="btn btn-outline-primary btn-sm mb-0">
+                    <i class="bi bi-camera me-1"></i> Add photo
+                    <input type="file" accept="image/*" class="d-none" data-kind="before">
+                  </label>
+                </div>
+                <div id="beforePhotos" class="d-grid gap-3"></div>
+              </div>
+              <div class="col-md-6">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h2 class="h6 mb-0">After</h2>
+                  <label class="btn btn-outline-primary btn-sm mb-0">
+                    <i class="bi bi-camera me-1"></i> Add photo
+                    <input type="file" accept="image/*" class="d-none" data-kind="after">
+                  </label>
+                </div>
+                <div id="afterPhotos" class="d-grid gap-3"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-5">
+        <!-- Terms & acceptance -->
+        <div class="card mb-4">
+          <div class="card-header">Terms &amp; conditions</div>
+          <div class="card-body">
+            <div id="acceptanceBox"></div>
+            <div class="d-flex gap-2 flex-wrap mt-3" id="termsActions">
+              <button class="btn btn-primary btn-sm" id="sendTermsBtn"><i class="bi bi-envelope me-1"></i> <span id="sendTermsLabel">Send T&amp;Cs email</span></button>
+              <button class="btn btn-outline-secondary btn-sm" id="copyLinkBtn"><i class="bi bi-link-45deg me-1"></i> Copy client link</button>
+            </div>
+            <p class="text-muted-small mt-2 mb-0" id="termsMeta"></p>
+          </div>
+        </div>
+
+        <!-- Status actions -->
+        <div class="card mb-4">
+          <div class="card-header">Job status</div>
+          <div class="card-body" id="statusActions"></div>
+        </div>
+
+        <!-- History -->
+        <div class="card mb-4">
+          <div class="card-header">History</div>
+          <div class="card-body">
+            <ul class="history-list" id="historyList"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Email preview modal -->
+  <div class="modal fade" id="emailPreviewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-envelope me-2"></i>Email preview — Terms &amp; Conditions</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-1"><strong>To:</strong> <span id="emailPreviewTo"></span></p>
+          <p><strong>Subject:</strong> <span id="emailPreviewSubject"></span></p>
+          <pre class="bg-light border rounded p-3 small" id="emailPreviewBody" style="white-space: pre-wrap;"></pre>
+          <p class="text-muted-small mb-0"><i class="bi bi-info-circle me-1"></i>Prototype: no real email is sent. The send is recorded in the email log.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="emailPreviewSend"><i class="bi bi-send me-1"></i> Send email</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="js/mockData.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/pages/job-detail.js"></script>
+</body>
+</html>
