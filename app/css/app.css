@@ -30,6 +30,10 @@ body {
   padding: 4px 10px;
 }
 
+.brand-logo-icon {
+  padding: 3px;
+}
+
 .brand-logo-lg {
   height: 64px;
 }
