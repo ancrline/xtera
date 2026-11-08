@@ -66,42 +66,43 @@ const UI = {
   },
 
   renderNavbar(active) {
-    const user = Auth.user();
-    if (!user) return;
-    const links = [
-      { href: "dashboard.html", label: "Dashboard", key: "dashboard" },
-      { href: "job-create.html", label: "New Job", key: "job-create", admin: true },
-      { href: "admin-settings.html", label: "Settings", key: "admin-settings", admin: true }
-    ];
-    const items = links
-      .filter(l => !l.admin || user.role === "admin")
-      .map(l => `<li class="nav-item"><a class="nav-link ${l.key === active ? "active" : ""}" href="${l.href}">${l.label}</a></li>`)
-      .join("");
+    Auth.currentUser().then(user => {
+      if (!user) return;
+      const links = [
+        { href: "dashboard.html", label: "Dashboard", key: "dashboard" },
+        { href: "job-create.html", label: "New Job", key: "job-create", admin: true },
+        { href: "admin-settings.html", label: "Settings", key: "admin-settings", admin: true }
+      ];
+      const items = links
+        .filter(l => !l.admin || user.role === "admin")
+        .map(l => `<li class="nav-item"><a class="nav-link ${l.key === active ? "active" : ""}" href="${l.href}">${l.label}</a></li>`)
+        .join("");
 
-    $("#appNavbar").html(`
-      <nav class="navbar navbar-expand-lg navbar-dark xt-app-nav">
-        <div class="container-fluid">
-          <a class="navbar-brand d-flex align-items-center gap-2" href="dashboard.html">
-            <img src="assets/logo/xtera-logo-landscape-512x128.png" alt="XTERA" class="brand-logo d-none d-sm-inline-block" width="152" height="38">
-            <img src="assets/logo/xtera-logo-square-icon-512x512.png" alt="XTERA" class="brand-logo brand-logo-icon d-sm-none" width="38" height="38">
-            <span class="text-white-50 small">Job Reports</span>
-          </a>
-          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appNav">
-            <span class="navbar-toggler-icon"></span>
-          </button>
-          <div class="collapse navbar-collapse" id="appNav">
-            <ul class="navbar-nav me-auto">${items}</ul>
-            <div class="d-flex align-items-center gap-3">
-              <span class="text-white-50 small">
-                <i class="bi bi-person-circle me-1"></i>${UI.escapeHtml(user.name)}
-                <span class="badge bg-light text-dark ms-1">${UI.escapeHtml(user.role)}</span>
-              </span>
-              <button class="btn btn-outline-light btn-sm" id="logoutBtn"><i class="bi bi-box-arrow-right me-1"></i>Logout</button>
+      $("#appNavbar").html(`
+        <nav class="navbar navbar-expand-lg navbar-dark xt-app-nav">
+          <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="dashboard.html">
+              <img src="assets/logo/xtera-logo-landscape-512x128.png" alt="XTERA" class="brand-logo d-none d-sm-inline-block" width="152" height="38">
+              <img src="assets/logo/xtera-logo-square-icon-512x512.png" alt="XTERA" class="brand-logo brand-logo-icon d-sm-none" width="38" height="38">
+              <span class="text-white-50 small">Job Reports</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appNav">
+              <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="appNav">
+              <ul class="navbar-nav me-auto">${items}</ul>
+              <div class="d-flex align-items-center gap-3">
+                <span class="text-white-50 small">
+                  <i class="bi bi-person-circle me-1"></i>${UI.escapeHtml(user.name)}
+                  <span class="badge bg-light text-dark ms-1">${UI.escapeHtml(user.role)}</span>
+                </span>
+                <button class="btn btn-outline-light btn-sm" id="logoutBtn"><i class="bi bi-box-arrow-right me-1"></i>Logout</button>
+              </div>
             </div>
           </div>
-        </div>
-      </nav>`);
-    $("#logoutBtn").on("click", () => Auth.logout());
+        </nav>`);
+      $("#logoutBtn").on("click", () => Auth.logout());
+    });
   },
 
   acceptLink(job) {

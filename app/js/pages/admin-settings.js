@@ -1,5 +1,5 @@
-$(function () {
-  const user = Auth.requireAdmin();
+$(async function () {
+  const user = await Auth.requireAdmin();
   if (!user) return;
 
   UI.renderNavbar("admin-settings");

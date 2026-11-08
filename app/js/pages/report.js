@@ -1,5 +1,5 @@
-$(function () {
-  const user = Auth.requireAuth();
+$(async function () {
+  const user = await Auth.requireAuth();
   if (!user) return;
 
   const jobId = new URLSearchParams(window.location.search).get("id");

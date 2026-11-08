@@ -1,17 +1,17 @@
-/* XTERA Job Reports — mock auth guards. */
+/* XTERA Job Reports — authentication guards. */
 
 const Auth = {
-  user() {
-    return Api.currentUser();
+  async currentUser() {
+    return await Api.currentUser();
   },
 
-  isAdmin() {
-    const u = this.user();
+  async isAdmin() {
+    const u = await this.currentUser();
     return u && u.role === "admin";
   },
 
-  requireAuth() {
-    const u = this.user();
+  async requireAuth() {
+    const u = await this.currentUser();
     if (!u) {
       window.location.href = "login.html";
       return null;
@@ -19,8 +19,8 @@ const Auth = {
     return u;
   },
 
-  requireAdmin() {
-    const u = this.requireAuth();
+  async requireAdmin() {
+    const u = await this.requireAuth();
     if (!u) return null;
     if (u.role !== "admin") {
       window.location.href = "dashboard.html";
@@ -29,9 +29,12 @@ const Auth = {
     return u;
   },
 
-  logout() {
-    Api.logout().then(() => {
-      window.location.href = "login.html";
-    });
+  async logout() {
+    try {
+      await Api.logout();
+    } catch (e) {
+      console.error("Logout error:", e);
+    }
+    window.location.href = "login.html";
   }
 };

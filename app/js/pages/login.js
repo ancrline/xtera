@@ -1,8 +1,10 @@
 $(function () {
-  if (Auth.user()) {
-    window.location.href = "dashboard.html";
-    return;
-  }
+  // Check if already logged in
+  Auth.currentUser().then(user => {
+    if (user) {
+      window.location.href = "dashboard.html";
+    }
+  });
 
   $("#loginForm").on("submit", function (e) {
     e.preventDefault();
