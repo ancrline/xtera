@@ -1,25 +1,20 @@
-import mysql from "mysql2/promise";
+import pg from "pg";
 
-const required = ["DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"];
-
-for (const key of required) {
-  if (!process.env[key]) {
-    throw new Error(`Missing required environment variable: ${key}`);
-  }
+if (!process.env.DATABASE_URL) {
+  throw new Error("Missing required environment variable: DATABASE_URL");
 }
 
-export const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  port: Number(process.env.DB_PORT || 3306),
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
+export const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 10
+});
+
+// Without a listener, an error on an idle client would crash the process.
+pool.on("error", error => {
+  console.error("Unexpected idle database client error:", error.message);
 });
 
 export async function testDbConnection() {
-  const [rows] = await pool.query("SELECT 1 AS ok");
-  return rows?.[0]?.ok === 1;
+  const result = await pool.query("SELECT 1 AS ok");
+  return result.rows[0]?.ok === 1;
 }

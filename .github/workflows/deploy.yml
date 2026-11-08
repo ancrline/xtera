@@ -1,0 +1,87 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  REMOTE_USER: deploy
+  APP_DIR: /var/www/jobreports/app
+  WEB_DIR: /var/www/jobreports/web
+  HEALTH_URL: https://reports.xtera.co.nz/api/health
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Verify dependencies install and entry file parses
+        working-directory: backend
+        run: |
+          npm ci --omit=dev
+          node --check server.js
+          node --check src/server.js
+
+      - name: Configure SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy API (rsync, no --delete)
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          rsync -rlz --chmod=D755,F644 \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            --exclude 'node_modules' \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '.env' \
+            --exclude '.env.*' \
+            backend/ "$REMOTE_USER@$VPS_HOST:$APP_DIR/"
+
+      - name: Install production dependencies and restart service
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$REMOTE_USER@$VPS_HOST" \
+            "cd $APP_DIR && npm ci --omit=dev && sudo systemctl restart jobreports"
+
+      - name: Deploy frontend (rsync --delete)
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          rsync -rlz --delete --chmod=D755,F644 \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            app/ "$REMOTE_USER@$VPS_HOST:$WEB_DIR/"
+
+      - name: Health check
+        run: |
+          sleep 5
+          curl --fail --silent --show-error \
+            --retry 5 --retry-delay 3 --retry-connrefused \
+            --output /dev/null --write-out 'Health check HTTP %{http_code}\n' \
+            "$HEALTH_URL"

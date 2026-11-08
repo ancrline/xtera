@@ -9,9 +9,15 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const clientOrigin = process.env.CLIENT_ORIGIN || "http://127.0.0.1:8765";
 const sessionSecret = process.env.SESSION_SECRET;
+const isProduction = process.env.NODE_ENV === "production";
 
 if (!sessionSecret) {
   throw new Error("Missing required environment variable: SESSION_SECRET");
+}
+
+// Nginx terminates TLS, so trust X-Forwarded-Proto for secure cookies.
+if (isProduction) {
+  app.set("trust proxy", 1);
 }
 
 app.use(
@@ -30,7 +36,7 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: false,
+      secure: isProduction,
       maxAge: 1000 * 60 * 60 * 8
     }
   })
@@ -52,17 +58,14 @@ function authRequired(req, res, next) {
   next();
 }
 
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, service: "xtera-job-reports-api" });
-});
-
-app.get("/api/health/db", async (_req, res) => {
+app.get("/api/health", async (_req, res) => {
   try {
     const ok = await testDbConnection();
-    res.json({ ok });
+    if (!ok) throw new Error("Unexpected health query result");
+    res.json({ ok: true });
   } catch (error) {
-    console.error("DB health check failed:", error);
-    res.status(500).json({ ok: false, error: "Database connection failed" });
+    console.error("DB health check failed:", error.message);
+    res.status(500).json({ ok: false });
   }
 });
 
@@ -75,8 +78,8 @@ app.post("/api/auth/login", async (req, res) => {
   }
 
   try {
-    const [rows] = await pool.query(
-      "SELECT id, name, email, role, password_hash FROM users WHERE email = ? LIMIT 1",
+    const { rows } = await pool.query(
+      "SELECT id, name, email, role, password_hash FROM users WHERE email = $1 LIMIT 1",
       [email]
     );
     if (!rows.length) {
@@ -114,10 +117,10 @@ app.get("/api/auth/me", authRequired, (req, res) => {
 
 app.get("/api/jobs", authRequired, async (_req, res) => {
   try {
-    const [rows] = await pool.query(
-      `SELECT id, job_number AS jobNumber, client_name AS clientName, client_email AS clientEmail,
-              client_phone AS clientPhone, property_address AS propertyAddress, work_type AS workType,
-              description, status, created_by AS createdBy, created_at AS createdAt
+    const { rows } = await pool.query(
+      `SELECT id, job_number AS "jobNumber", client_name AS "clientName", client_email AS "clientEmail",
+              client_phone AS "clientPhone", property_address AS "propertyAddress", work_type AS "workType",
+              description, status, created_by AS "createdBy", created_at AS "createdAt"
        FROM jobs
        ORDER BY created_at DESC`
     );
@@ -132,6 +135,6 @@ app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });
 });
 
-app.listen(port, () => {
-  console.log(`API listening on http://localhost:${port}`);
+app.listen(port, "127.0.0.1", () => {
+  console.log(`API listening on http://127.0.0.1:${port}`);
 });
