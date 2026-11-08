@@ -76,7 +76,7 @@ jobs:
         run: |
           rsync -rlz --delete --chmod=D755,F644 \
             -e "ssh -i ~/.ssh/deploy_key" \
-            app/ "$REMOTE_USER@$VPS_HOST:$WEB_DIR/"
+            app/ assets/ "$REMOTE_USER@$VPS_HOST:$WEB_DIR/"
 
       - name: Health check
         run: |

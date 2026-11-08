@@ -82,8 +82,8 @@ const UI = {
       <nav class="navbar navbar-expand-lg navbar-dark xt-app-nav">
         <div class="container-fluid">
           <a class="navbar-brand d-flex align-items-center gap-2" href="dashboard.html">
-            <img src="../assets/logo/xtera-logo-landscape-512x128.png" alt="XTERA" class="brand-logo d-none d-sm-inline-block" width="152" height="38">
-            <img src="../assets/logo/xtera-logo-square-icon-512x512.png" alt="XTERA" class="brand-logo brand-logo-icon d-sm-none" width="38" height="38">
+            <img src="assets/logo/xtera-logo-landscape-512x128.png" alt="XTERA" class="brand-logo d-none d-sm-inline-block" width="152" height="38">
+            <img src="assets/logo/xtera-logo-square-icon-512x512.png" alt="XTERA" class="brand-logo brand-logo-icon d-sm-none" width="38" height="38">
             <span class="text-white-50 small">Job Reports</span>
           </a>
           <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appNav">
