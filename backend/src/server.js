@@ -131,6 +131,19 @@ app.get("/api/jobs", authRequired, async (_req, res) => {
   }
 });
 
+// TODO: Add more endpoints as needed
+// POST /api/jobs — create job
+// GET /api/jobs/:id — get single job
+// PATCH /api/jobs/:id — update job
+// POST /api/jobs/:id/notes — add note
+// POST /api/jobs/:id/images — upload image
+// GET /api/settings — get company settings
+// PATCH /api/settings — update settings
+// GET /api/work-types — list work types
+// GET /api/public/jobs/:token — get job by public token (no auth)
+// POST /api/public/accept/:token — accept terms by token (no auth)
+// POST /api/jobs/:id/send-terms — send terms email to client
+
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });
 });
