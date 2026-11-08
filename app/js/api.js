@@ -1,132 +1,213 @@
-/* XTERA Job Reports — API layer.
-   Calls real backend API endpoints. Backend is at /api/ on the same origin.
-   All requests include credentials (for session cookies).
+/* XTERA Job Reports — Real API layer.
+   Calls the Node.js backend at /api/...
+   All endpoints use fetch with credentials: 'include' for session cookies.
 */
 
-const BASE_URL = "/api";
+const API_BASE = '/api';
 
 const Api = {
   // ---- auth ----
   async login(email, password) {
-    const res = await fetch(`${BASE_URL}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
     });
     if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.error || "Login failed");
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Login failed (${res.status})`);
     }
-    const data = await res.json();
-    return data.user;
+    const { user } = await res.json();
+    return user;
   },
 
   async logout() {
-    const res = await fetch(`${BASE_URL}/auth/logout`, {
-      method: "POST",
-      credentials: "include"
+    const res = await fetch(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include'
     });
     if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.error || "Logout failed");
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Logout failed (${res.status})`);
     }
-    return res.json();
   },
 
   async currentUser() {
     try {
-      const res = await fetch(`${BASE_URL}/auth/me`, {
-        credentials: "include"
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        credentials: 'include'
       });
       if (!res.ok) return null;
-      const data = await res.json();
-      return data.user;
-    } catch {
+      const { user } = await res.json();
+      return user;
+    } catch (e) {
       return null;
     }
   },
 
   // ---- jobs ----
-  async listJobs({ status = "", search = "" } = {}) {
-    const res = await fetch(`${BASE_URL}/jobs`, {
-      credentials: "include"
+  async listJobs() {
+    const res = await fetch(`${API_BASE}/jobs`, {
+      credentials: 'include'
     });
     if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.error || "Failed to load jobs");
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to load jobs (${res.status})`);
     }
-    const data = await res.json();
-    let jobs = data.jobs || [];
-
-    if (status) jobs = jobs.filter(j => j.status === status);
-    if (search) {
-      const q = search.toLowerCase();
-      jobs = jobs.filter(j =>
-        [j.jobNumber, j.clientName, j.clientEmail, j.propertyAddress, j.workType]
-          .filter(Boolean)
-          .some(v => String(v).toLowerCase().includes(q))
-      );
-    }
+    const { jobs } = await res.json();
     return jobs;
   },
 
   async getJob(id) {
-    const jobs = await this.listJobs();
-    const job = jobs.find(j => j.id === parseInt(id));
-    if (!job) throw new Error("Job not found");
+    const res = await fetch(`${API_BASE}/jobs/${id}`, {
+      credentials: 'include'
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Job not found (${res.status})`);
+    }
+    const { job } = await res.json();
     return job;
   },
 
   async createJob(payload) {
-    throw new Error("Create job endpoint not yet implemented on backend");
+    const res = await fetch(`${API_BASE}/jobs`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to create job (${res.status})`);
+    }
+    const { job } = await res.json();
+    return job;
   },
 
-  async updateJobStatus(id, status) {
-    throw new Error("Update job status endpoint not yet implemented on backend");
+  async updateJob(id, payload) {
+    const res = await fetch(`${API_BASE}/jobs/${id}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to update job (${res.status})`);
+    }
+    const { job } = await res.json();
+    return job;
   },
 
-  async addNote(jobId, text) {
-    throw new Error("Add note endpoint not yet implemented on backend");
+  async addJobNote(jobId, text) {
+    const res = await fetch(`${API_BASE}/jobs/${jobId}/notes`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to add note (${res.status})`);
+    }
+    const { note } = await res.json();
+    return note;
   },
 
-  async uploadJobImage(jobId, kind, dataUrl, caption) {
-    throw new Error("Upload image endpoint not yet implemented on backend");
+  async getJobNotes(jobId) {
+    const res = await fetch(`${API_BASE}/jobs/${jobId}/notes`, {
+      credentials: 'include'
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to load notes (${res.status})`);
+    }
+    const { notes } = await res.json();
+    return notes;
   },
 
-  async acceptTerms(token, name) {
-    throw new Error("Accept terms endpoint not yet implemented on backend");
+  async uploadJobImage(jobId, kind, file, caption) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('kind', kind);
+    formData.append('caption', caption || '');
+
+    const res = await fetch(`${API_BASE}/jobs/${jobId}/images`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to upload image (${res.status})`);
+    }
+    const { image } = await res.json();
+    return image;
   },
 
-  async getTerms() {
-    throw new Error("Get terms endpoint not yet implemented on backend");
+  async getJobImages(jobId) {
+    const res = await fetch(`${API_BASE}/jobs/${jobId}/images`, {
+      credentials: 'include'
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to load images (${res.status})`);
+    }
+    const { images } = await res.json();
+    return images;
   },
 
-  async listTermsVersions() {
-    throw new Error("List terms endpoint not yet implemented on backend");
+  async deleteJobImage(imageId) {
+    const res = await fetch(`${API_BASE}/images/${imageId}`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to delete image (${res.status})`);
+    }
   },
 
-  async saveTerms(text) {
-    throw new Error("Save terms endpoint not yet implemented on backend");
-  },
-
-  async sendTermsEmail(jobId) {
-    throw new Error("Send terms email endpoint not yet implemented on backend");
-  },
-
-  async getJobByToken(token) {
-    throw new Error("Get job by token endpoint not yet implemented on backend");
-  },
-
-  async listWorkTypes() {
-    throw new Error("List work types endpoint not yet implemented on backend");
+  async acceptTerms(token, acceptedByName) {
+    const res = await fetch(`${API_BASE}/jobs/accept/${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acceptedByName })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to accept terms (${res.status})`);
+    }
+    const { job } = await res.json();
+    return job;
   },
 
   async getSettings() {
-    throw new Error("Get settings endpoint not yet implemented on backend");
+    const res = await fetch(`${API_BASE}/settings`, {
+      credentials: 'include'
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to load settings (${res.status})`);
+    }
+    const { settings } = await res.json();
+    return settings;
   },
 
   async updateSettings(payload) {
-    throw new Error("Update settings endpoint not yet implemented on backend");
+    const res = await fetch(`${API_BASE}/settings`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to update settings (${res.status})`);
+    }
+    const { settings } = await res.json();
+    return settings;
   }
 };

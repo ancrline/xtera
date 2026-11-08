@@ -131,18 +131,138 @@ app.get("/api/jobs", authRequired, async (_req, res) => {
   }
 });
 
-// TODO: Add more endpoints as needed
-// POST /api/jobs — create job
-// GET /api/jobs/:id — get single job
-// PATCH /api/jobs/:id — update job
-// POST /api/jobs/:id/notes — add note
-// POST /api/jobs/:id/images — upload image
-// GET /api/settings — get company settings
-// PATCH /api/settings — update settings
-// GET /api/work-types — list work types
-// GET /api/public/jobs/:token — get job by public token (no auth)
-// POST /api/public/accept/:token — accept terms by token (no auth)
-// POST /api/jobs/:id/send-terms — send terms email to client
+app.get("/api/jobs/:id", authRequired, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = await pool.query(
+      `SELECT id, job_number AS "jobNumber", client_name AS "clientName", client_email AS "clientEmail",
+              client_phone AS "clientPhone", property_address AS "propertyAddress", work_type AS "workType",
+              description, status, token, terms_sent_at AS "termsSentAt", terms_version AS "termsVersion",
+              accepted_by AS "acceptedBy", accepted_at AS "acceptedAt", accepted_terms_version AS "acceptedTermsVersion",
+              created_by AS "createdBy", created_at AS "createdAt"
+       FROM jobs
+       WHERE id = $1`,
+      [id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Job not found" });
+    res.json({ job: rows[0] });
+  } catch (error) {
+    console.error("Get job failed:", error);
+    res.status(500).json({ error: "Could not load job" });
+  }
+});
+
+app.post("/api/jobs", authRequired, async (req, res) => {
+  try {
+    const { jobNumber, clientName, clientEmail, clientPhone, propertyAddress, workType, description } = req.body;
+    const token = require("crypto").randomBytes(24).toString("hex");
+    
+    const { rows } = await pool.query(
+      `INSERT INTO jobs (job_number, client_name, client_email, client_phone, property_address, work_type, description, token, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id, job_number AS "jobNumber", client_name AS "clientName", client_email AS "clientEmail",
+                 client_phone AS "clientPhone", property_address AS "propertyAddress", work_type AS "workType",
+                 description, status, created_by AS "createdBy", created_at AS "createdAt"`,
+      [jobNumber, clientName, clientEmail, clientPhone, propertyAddress, workType, description || null, token, req.session.user.name]
+    );
+    res.json({ job: rows[0] });
+  } catch (error) {
+    console.error("Create job failed:", error);
+    res.status(500).json({ error: "Could not create job" });
+  }
+});
+
+app.patch("/api/jobs/:id", authRequired, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, description } = req.body;
+    
+    const { rows } = await pool.query(
+      `UPDATE jobs
+       SET status = COALESCE($2, status), description = COALESCE($3, description)
+       WHERE id = $1
+       RETURNING id, job_number AS "jobNumber", client_name AS "clientName", client_email AS "clientEmail",
+                 client_phone AS "clientPhone", property_address AS "propertyAddress", work_type AS "workType",
+                 description, status, created_by AS "createdBy", created_at AS "createdAt"`,
+      [id, status, description]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Job not found" });
+    res.json({ job: rows[0] });
+  } catch (error) {
+    console.error("Update job failed:", error);
+    res.status(500).json({ error: "Could not update job" });
+  }
+});
+
+app.get("/api/jobs/:id/notes", authRequired, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = await pool.query(
+      `SELECT id, job_id AS "jobId", author, text, created_at AS "createdAt"
+       FROM job_notes
+       WHERE job_id = $1
+       ORDER BY created_at ASC`,
+      [id]
+    );
+    res.json({ notes: rows });
+  } catch (error) {
+    console.error("Get notes failed:", error);
+    res.status(500).json({ error: "Could not load notes" });
+  }
+});
+
+app.post("/api/jobs/:id/notes", authRequired, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { text } = req.body;
+    
+    const { rows } = await pool.query(
+      `INSERT INTO job_notes (job_id, author, text)
+       VALUES ($1, $2, $3)
+       RETURNING id, job_id AS "jobId", author, text, created_at AS "createdAt"`,
+      [id, req.session.user.name, text]
+    );
+    res.json({ note: rows[0] });
+  } catch (error) {
+    console.error("Add note failed:", error);
+    res.status(500).json({ error: "Could not add note" });
+  }
+});
+
+app.get("/api/settings", authRequired, async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, company_name AS "companyName", email, phone, website
+       FROM settings
+       WHERE id = 1`
+    );
+    res.json({ settings: rows[0] || {} });
+  } catch (error) {
+    console.error("Get settings failed:", error);
+    res.status(500).json({ error: "Could not load settings" });
+  }
+});
+
+app.patch("/api/settings", authRequired, async (req, res) => {
+  try {
+    const { companyName, email, phone, website } = req.body;
+    
+    const { rows } = await pool.query(
+      `UPDATE settings
+       SET company_name = COALESCE($2, company_name),
+           email = COALESCE($3, email),
+           phone = COALESCE($4, phone),
+           website = COALESCE($5, website)
+       WHERE id = 1
+       RETURNING id, company_name AS "companyName", email, phone, website`,
+      [1, companyName, email, phone, website]
+    );
+    res.json({ settings: rows[0] });
+  } catch (error) {
+    console.error("Update settings failed:", error);
+    res.status(500).json({ error: "Could not update settings" });
+  }
+});
 
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });
