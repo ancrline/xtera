@@ -206,6 +206,43 @@ const Api = {
     return job;
   },
 
+  async listWorkTypes() {
+    const res = await fetch(`${API_BASE}/work-types`, { credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Failed to load work types (${res.status})`);
+    return data.workTypes;
+  },
+
+  async listAllWorkTypes() {
+    const res = await fetch(`${API_BASE}/work-types?all=1`, { credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Failed to load work types (${res.status})`);
+    return data.workTypes;
+  },
+
+  async addWorkType(label) {
+    const res = await fetch(`${API_BASE}/work-types`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Failed to add work type (${res.status})`);
+    return data.workType;
+  },
+
+  async deactivateWorkType(id) {
+    const res = await fetch(`${API_BASE}/work-types/${id}`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to remove work type (${res.status})`);
+    }
+  },
+
   async listUsers() {
     const res = await fetch(`${API_BASE}/users`, { credentials: 'include' });
     const data = await res.json().catch(() => ({}));

@@ -35,7 +35,8 @@ $(async function () {
         $("#newWorkTypeRow").addClass("d-none");
         $("#newWorkTypeInput").val("");
         UI.toast(`Work type "${label}" added.`);
-      });
+      })
+      .catch(err => UI.toast(err.message, "danger"));
   });
 
   $("#saveBtn").on("click", function () { sendAfterSave = false; });

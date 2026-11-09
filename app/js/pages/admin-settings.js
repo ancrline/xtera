@@ -51,7 +51,7 @@ $(async function () {
           <span>${UI.escapeHtml(t.label)} ${t.active ? "" : '<span class="badge bg-secondary ms-2">inactive</span>'}</span>
           ${t.active ? `<button class="btn btn-outline-danger btn-sm" data-id="${t.id}"><i class="bi bi-x-lg me-1"></i> Remove</button>` : ""}
         </li>`).join(""));
-    });
+    }).catch(err => UI.toast(err.message, "danger"));
   }
 
   $("#workTypeForm").on("submit", function (e) {
@@ -62,14 +62,14 @@ $(async function () {
       $("#workTypeInput").val("");
       loadWorkTypes();
       UI.toast(`Work type "${label}" added.`);
-    });
+    }).catch(err => UI.toast(err.message, "danger"));
   });
 
   $("#workTypeList").on("click", "button[data-id]", function () {
     Api.deactivateWorkType($(this).data("id")).then(() => {
       loadWorkTypes();
       UI.toast("Work type removed (existing jobs keep their work type).");
-    });
+    }).catch(err => UI.toast(err.message, "danger"));
   });
 
   // ---- Users ----

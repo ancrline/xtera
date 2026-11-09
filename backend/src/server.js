@@ -305,6 +305,60 @@ app.post("/api/users", authRequired, adminRequired, async (req, res) => {
   }
 });
 
+app.get("/api/work-types", authRequired, async (req, res) => {
+  const includeInactive = req.query.all === "1" && req.session.user?.role === "admin";
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, label, active FROM work_types
+       ${includeInactive ? "" : "WHERE active"}
+       ORDER BY id`
+    );
+    res.json({ workTypes: rows });
+  } catch (error) {
+    console.error("List work types failed:", error);
+    res.status(500).json({ error: "Could not load work types" });
+  }
+});
+
+app.post("/api/work-types", authRequired, adminRequired, async (req, res) => {
+  const label = String(req.body?.label || "").trim();
+  if (!label || label.length > 120) {
+    return res.status(400).json({ error: "Work type name is required (max 120 characters)" });
+  }
+
+  try {
+    // Re-adding a removed work type brings it back instead of failing on the unique label.
+    const { rows } = await pool.query(
+      `INSERT INTO work_types (label) VALUES ($1)
+       ON CONFLICT (label) DO UPDATE SET active = TRUE
+       RETURNING id, label, active`,
+      [label]
+    );
+    res.status(201).json({ workType: rows[0] });
+  } catch (error) {
+    console.error("Add work type failed:", error);
+    res.status(500).json({ error: "Could not add work type" });
+  }
+});
+
+app.delete("/api/work-types/:id", authRequired, adminRequired, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: "Invalid work type" });
+  }
+
+  try {
+    const { rowCount } = await pool.query("UPDATE work_types SET active = FALSE WHERE id = $1", [id]);
+    if (!rowCount) {
+      return res.status(404).json({ error: "Work type not found" });
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Remove work type failed:", error);
+    res.status(500).json({ error: "Could not remove work type" });
+  }
+});
+
 app.get("/api/jobs", authRequired, async (_req, res) => {
   try {
     const { rows } = await pool.query(
