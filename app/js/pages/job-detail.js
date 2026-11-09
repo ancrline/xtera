@@ -120,10 +120,14 @@ $(async function () {
   // ---- events ----
 
   $("#statusActions").on("click", "button[data-status]", function () {
-    Api.updateJobStatus(job.id, $(this).data("status")).then(updated => {
+    const btn = $(this).prop("disabled", true);
+    Api.updateJobStatus(job.id, btn.data("status")).then(updated => {
       job = updated;
       render();
       UI.toast("Status updated to " + job.status + ".");
+    }).catch(err => {
+      btn.prop("disabled", false);
+      UI.toast(err.message, "danger");
     });
   });
 
@@ -138,7 +142,7 @@ $(async function () {
       job = updated;
       renderNotes();
       UI.toast("Note added.");
-    });
+    }).catch(err => UI.toast(err.message, "danger"));
   });
 
   $("input[type=file][data-kind]").on("change", function () {
@@ -152,6 +156,7 @@ $(async function () {
       .then(updated => {
         job = updated;
         renderPhotos();
+        renderHistory();
         UI.toast(kind.charAt(0).toUpperCase() + kind.slice(1) + " photo added.");
       })
       .catch(err => UI.toast(err.message, "danger"));
@@ -164,8 +169,10 @@ $(async function () {
       .then(updated => {
         job = updated;
         renderPhotos();
+        renderHistory();
         UI.toast("Photo deleted.");
-      });
+      })
+      .catch(err => UI.toast(err.message, "danger"));
   });
 
   $("#sendTermsBtn").on("click", function () {

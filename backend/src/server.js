@@ -460,7 +460,14 @@ async function loadJobDetail(id) {
      FROM job_history WHERE job_id = $1 ORDER BY created_at, id`,
     [id]
   );
-  return { ...withAcceptance(rows[0]), notes: notes.rows, images: [], history: history.rows };
+  const images = await pool.query(
+    `SELECT id, kind, caption, uploaded_by AS "uploadedBy", created_at AS "createdAt"
+     FROM job_images WHERE job_id = $1 ORDER BY created_at, id`,
+    [id]
+  );
+  // The page puts this straight into <img src>; the bytes are served by GET /api/images/:id.
+  const imageList = images.rows.map(img => ({ ...img, dataUrl: `/api/images/${img.id}` }));
+  return { ...withAcceptance(rows[0]), notes: notes.rows, images: imageList, history: history.rows };
 }
 
 app.get("/api/jobs/:id", authRequired, async (req, res) => {
@@ -711,22 +718,49 @@ app.post("/api/jobs", authRequired, async (req, res) => {
   }
 });
 
+// Each status can only be reached from one other status, so work can't start before the client accepts.
+const STATUS_PREREQUISITE = { "In progress": "Accepted", "Completed": "In progress" };
+
 app.patch("/api/jobs/:id", authRequired, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(404).json({ error: "Job not found" });
+
+  const status = req.body?.status;
+  const description = req.body?.description;
+  if (status === undefined && description === undefined) {
+    return res.status(400).json({ error: "Nothing to update" });
+  }
+  if (status !== undefined && !STATUS_PREREQUISITE[status]) {
+    return res.status(400).json({ error: "Invalid status" });
+  }
+  if (description !== undefined && (typeof description !== "string" || description.length > 10000)) {
+    return res.status(400).json({ error: "Invalid description" });
+  }
+
   try {
-    const { id } = req.params;
-    const { status, description } = req.body;
-    
-    const { rows } = await pool.query(
-      `UPDATE jobs
-       SET status = COALESCE($2, status), description = COALESCE($3, description)
-       WHERE id = $1
-       RETURNING id, job_number AS "jobNumber", client_name AS "clientName", client_email AS "clientEmail",
-                 client_phone AS "clientPhone", property_address AS "propertyAddress", work_type AS "workType",
-                 description, status, created_by AS "createdBy", created_at AS "createdAt"`,
-      [id, status, description]
-    );
-    if (!rows.length) return res.status(404).json({ error: "Job not found" });
-    res.json({ job: rows[0] });
+    const current = await pool.query("SELECT status FROM jobs WHERE id = $1", [id]);
+    if (!current.rows.length) return res.status(404).json({ error: "Job not found" });
+
+    if (status !== undefined) {
+      const update = await pool.query(
+        "UPDATE jobs SET status = $2 WHERE id = $1 AND status = $3 RETURNING id",
+        [id, status, STATUS_PREREQUISITE[status]]
+      );
+      if (!update.rows.length) {
+        return res.status(409).json({
+          error: `This job can't be moved to "${status}" from "${current.rows[0].status}". Refresh the page and try again.`
+        });
+      }
+      await pool.query(
+        "INSERT INTO job_history (job_id, event, actor) VALUES ($1, $2, $3)",
+        [id, `Status changed to ${status}`, req.session.user.name]
+      );
+    }
+    if (description !== undefined) {
+      await pool.query("UPDATE jobs SET description = $2 WHERE id = $1", [id, description.trim() || null]);
+    }
+
+    res.json({ job: await loadJobDetail(id) });
   } catch (error) {
     console.error("Update job failed:", error);
     res.status(500).json({ error: "Could not update job" });
@@ -751,20 +785,132 @@ app.get("/api/jobs/:id/notes", authRequired, async (req, res) => {
 });
 
 app.post("/api/jobs/:id/notes", authRequired, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(404).json({ error: "Job not found" });
+
+  const text = String(req.body?.text || "").trim();
+  if (!text) return res.status(400).json({ error: "Note text is required" });
+  if (text.length > 5000) return res.status(400).json({ error: "Note is too long (max 5000 characters)" });
+
   try {
-    const { id } = req.params;
-    const { text } = req.body;
-    
+    const job = await pool.query("SELECT 1 FROM jobs WHERE id = $1", [id]);
+    if (!job.rows.length) return res.status(404).json({ error: "Job not found" });
+
     const { rows } = await pool.query(
       `INSERT INTO job_notes (job_id, author, text)
        VALUES ($1, $2, $3)
        RETURNING id, job_id AS "jobId", author, text, created_at AS "createdAt"`,
       [id, req.session.user.name, text]
     );
-    res.json({ note: rows[0] });
+    res.status(201).json({ note: rows[0] });
   } catch (error) {
     console.error("Add note failed:", error);
     res.status(500).json({ error: "Could not add note" });
+  }
+});
+
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+const MAX_IMAGES_PER_JOB = 40;
+
+// Identify the image from its first bytes rather than trusting the type the browser sent.
+function sniffImageType(buf) {
+  if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+  if (buf.length > 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+  if (buf.length > 12 && buf.subarray(0, 4).toString() === "RIFF" && buf.subarray(8, 12).toString() === "WEBP") return "image/webp";
+  return null;
+}
+
+app.post("/api/jobs/:id/images", authRequired, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(404).json({ error: "Job not found" });
+
+  const kind = req.body?.kind;
+  const dataUrl = String(req.body?.dataUrl || "");
+  const caption = String(req.body?.caption || "").trim().slice(0, 255);
+  if (!["before", "after"].includes(kind)) {
+    return res.status(400).json({ error: "Photo type must be before or after" });
+  }
+  const match = /^data:image\/(?:jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+  if (!match) return res.status(400).json({ error: "Please choose a JPEG, PNG or WebP image" });
+
+  const bytes = Buffer.from(match[1], "base64");
+  const mimeType = sniffImageType(bytes);
+  if (!mimeType) return res.status(400).json({ error: "That file isn't a valid image" });
+  if (bytes.length > MAX_IMAGE_BYTES) {
+    return res.status(413).json({ error: "That photo is too large (max 3 MB)" });
+  }
+
+  try {
+    const job = await pool.query("SELECT 1 FROM jobs WHERE id = $1", [id]);
+    if (!job.rows.length) return res.status(404).json({ error: "Job not found" });
+
+    const count = await pool.query("SELECT count(*)::int AS n FROM job_images WHERE job_id = $1", [id]);
+    if (count.rows[0].n >= MAX_IMAGES_PER_JOB) {
+      return res.status(400).json({ error: `A job can have at most ${MAX_IMAGES_PER_JOB} photos` });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO job_images (job_id, kind, mime_type, data, caption, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, kind, caption, uploaded_by AS "uploadedBy", created_at AS "createdAt"`,
+      [id, kind, mimeType, bytes, caption, req.session.user.name]
+    );
+    await pool.query(
+      "INSERT INTO job_history (job_id, event, actor) VALUES ($1, $2, $3)",
+      [id, `${kind === "before" ? "Before" : "After"} photo added`, req.session.user.name]
+    );
+    res.status(201).json({ image: { ...rows[0], dataUrl: `/api/images/${rows[0].id}` } });
+  } catch (error) {
+    console.error("Add image failed:", error);
+    res.status(500).json({ error: "Could not save the photo" });
+  }
+});
+
+app.get("/api/images/:id", authRequired, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(404).json({ error: "Photo not found" });
+
+  try {
+    const { rows } = await pool.query("SELECT mime_type, data FROM job_images WHERE id = $1 AND data IS NOT NULL", [id]);
+    if (!rows.length) return res.status(404).json({ error: "Photo not found" });
+    res.set({
+      "Content-Type": rows[0].mime_type,
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "private, max-age=86400"
+    });
+    res.send(rows[0].data);
+  } catch (error) {
+    console.error("Get image failed:", error);
+    res.status(500).json({ error: "Could not load the photo" });
+  }
+});
+
+app.delete("/api/images/:id", authRequired, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(404).json({ error: "Photo not found" });
+
+  try {
+    const found = await pool.query(
+      `SELECT job_id AS "jobId", kind, uploaded_by AS "uploadedBy" FROM job_images WHERE id = $1`,
+      [id]
+    );
+    if (!found.rows.length) return res.status(404).json({ error: "Photo not found" });
+    const image = found.rows[0];
+
+    const user = req.session.user;
+    if (user.role !== "admin" && image.uploadedBy !== user.name) {
+      return res.status(403).json({ error: "Only an admin or the person who added a photo can delete it" });
+    }
+
+    await pool.query("DELETE FROM job_images WHERE id = $1", [id]);
+    await pool.query(
+      "INSERT INTO job_history (job_id, event, actor) VALUES ($1, $2, $3)",
+      [image.jobId, `${image.kind === "before" ? "Before" : "After"} photo deleted`, user.name]
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Delete image failed:", error);
+    res.status(500).json({ error: "Could not delete the photo" });
   }
 });
 

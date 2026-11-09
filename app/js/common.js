@@ -149,22 +149,27 @@ ${settings.email} | ${settings.phone} | ${settings.website}`
     modal.show();
   },
 
-  readFileAsDataUrl(file, maxWidth = 1200) {
-    // Downscale large photos so base64 fits in localStorage for the prototype.
+  readFileAsDataUrl(file, maxSize = 1200) {
+    // Always shrink and re-encode so uploads stay small (phone photos are several MB).
+    // WebP keeps the same visual quality at roughly 25-35% less size than JPEG.
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onerror = () => reject(new Error("Could not read file."));
       reader.onload = () => {
         const img = new Image();
-        img.onerror = () => reject(new Error("Invalid image file."));
+        img.onerror = () => reject(new Error("That file isn't a valid image."));
         img.onload = () => {
-          if (img.width <= maxWidth) return resolve(reader.result);
-          const scale = maxWidth / img.width;
+          const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
           const canvas = document.createElement("canvas");
-          canvas.width = maxWidth;
+          canvas.width = Math.round(img.width * scale);
           canvas.height = Math.round(img.height * scale);
-          canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL("image/jpeg", 0.8));
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          // Browsers that can't encode WebP silently return a PNG, so fall back to JPEG.
+          const webp = canvas.toDataURL("image/webp", 0.85);
+          resolve(webp.startsWith("data:image/webp") ? webp : canvas.toDataURL("image/jpeg", 0.85));
         };
         img.src = reader.result;
       };

@@ -123,6 +123,22 @@ const Api = {
     return job;
   },
 
+  async updateJobStatus(jobId, status) {
+    const res = await fetch(`${API_BASE}/jobs/${jobId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Failed to update status (${res.status})`);
+    return data.job;
+  },
+
+  async addNote(jobId, text) {
+    return this.addJobNote(jobId, text);
+  },
+
   async addJobNote(jobId, text) {
     const res = await fetch(`${API_BASE}/jobs/${jobId}/notes`, {
       method: 'POST',
@@ -148,6 +164,24 @@ const Api = {
     }
     const { notes } = await res.json();
     return notes;
+  },
+
+  async addImage(jobId, { kind, dataUrl, caption }) {
+    const res = await fetch(`${API_BASE}/jobs/${jobId}/images`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind, dataUrl, caption })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(res.status === 413 ? 'That photo is too large to upload. Try a smaller one.' : (data.error || `Failed to add photo (${res.status})`));
+    }
+    return data.image;
+  },
+
+  async deleteImage(_jobId, imageId) {
+    return this.deleteJobImage(imageId);
   },
 
   async uploadJobImage(jobId, kind, file, caption) {

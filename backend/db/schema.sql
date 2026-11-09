@@ -79,11 +79,17 @@ CREATE TABLE IF NOT EXISTS job_images (
   id          INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
   kind        TEXT NOT NULL CHECK (kind IN ('before','after')),
-  file_path   VARCHAR(255) NOT NULL,
+  file_path   VARCHAR(255) NULL,
+  mime_type   VARCHAR(50) NULL,
+  data        BYTEA NULL,
   caption     VARCHAR(255) NOT NULL DEFAULT '',
   uploaded_by VARCHAR(120) NOT NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Upgrade for databases created before photos were stored in the database.
+ALTER TABLE job_images ADD COLUMN IF NOT EXISTS mime_type VARCHAR(50) NULL;
+ALTER TABLE job_images ADD COLUMN IF NOT EXISTS data BYTEA NULL;
+ALTER TABLE job_images ALTER COLUMN file_path DROP NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_images_job ON job_images (job_id);
 
 CREATE TABLE IF NOT EXISTS job_history (
