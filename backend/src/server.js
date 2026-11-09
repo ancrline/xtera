@@ -190,7 +190,7 @@ app.post("/api/auth/forgot-password", resetLimiter, async (req, res) => {
       [user.id, hashResetToken(token), RESET_TTL_MINUTES]
     );
 
-    const link = `${appBaseUrl}/app/reset-password.html?token=${token}`;
+    const link = `${appBaseUrl}/reset-password.html?token=${token}`;
     sendPasswordResetEmail({
       to: user.email,
       name: user.name,
