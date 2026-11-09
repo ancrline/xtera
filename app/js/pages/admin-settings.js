@@ -24,23 +24,39 @@ $(async function () {
 
   // ---- Terms ----
   function loadTerms() {
-    Api.getTerms().then(t => $("#termsText").val(t.text));
+    Api.getTerms().then(t => $("#termsText").val(t.text))
+      .catch(err => UI.toast(err.message, "danger"));
     Api.listTermsVersions().then(versions => {
       $("#termsHistory").html(versions.slice().reverse().map(v =>
         `<li>Version ${v.version} — saved ${UI.fmtDateTime(v.createdAt)}</li>`
-      ).join(""));
-    });
+      ).join("") || "<li class=\"text-muted\">No versions saved yet.</li>");
+    }).catch(err => UI.toast(err.message, "danger"));
   }
+
+  const termsModal = new bootstrap.Modal(document.getElementById("confirmTermsModal"));
 
   $("#termsForm").on("submit", function (e) {
     e.preventDefault();
-    const text = $("#termsText").val().trim();
-    if (!text) return;
-    if (!confirm("Save as a new version? New jobs will use this version; existing acceptances keep their original version.")) return;
-    Api.saveTerms(text).then(entry => {
-      UI.toast("Terms saved as version " + entry.version + ".");
-      loadTerms();
-    });
+    if (!$("#termsText").val().trim()) {
+      UI.toast("Terms text cannot be empty.", "warning");
+      return;
+    }
+    termsModal.show();
+  });
+
+  $("#confirmTermsBtn").on("click", function () {
+    const btn = $(this).prop("disabled", true);
+    Api.saveTerms($("#termsText").val().trim())
+      .then(entry => {
+        termsModal.hide();
+        UI.toast("Terms saved as version " + entry.version + ".");
+        loadTerms();
+      })
+      .catch(err => {
+        termsModal.hide();
+        UI.toast(err.message, "danger");
+      })
+      .finally(() => btn.prop("disabled", false));
   });
 
   // ---- Work types ----

@@ -359,6 +359,61 @@ app.delete("/api/work-types/:id", authRequired, adminRequired, async (req, res) 
   }
 });
 
+app.get("/api/terms", authRequired, async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT version, text, created_at AS "createdAt"
+       FROM terms_versions ORDER BY version DESC LIMIT 1`
+    );
+    res.json({ terms: rows[0] || { version: 0, text: "", createdAt: null } });
+  } catch (error) {
+    console.error("Get terms failed:", error);
+    res.status(500).json({ error: "Could not load terms" });
+  }
+});
+
+app.get("/api/terms/versions", authRequired, adminRequired, async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT version, created_at AS "createdAt"
+       FROM terms_versions ORDER BY version`
+    );
+    res.json({ versions: rows });
+  } catch (error) {
+    console.error("List terms versions failed:", error);
+    res.status(500).json({ error: "Could not load terms history" });
+  }
+});
+
+app.post("/api/terms", authRequired, adminRequired, async (req, res) => {
+  const text = String(req.body?.text || "").trim();
+  if (!text) {
+    return res.status(400).json({ error: "Terms text cannot be empty" });
+  }
+  if (text.length > 100000) {
+    return res.status(400).json({ error: "Terms text is too long" });
+  }
+
+  try {
+    const latest = await pool.query(
+      "SELECT text FROM terms_versions ORDER BY version DESC LIMIT 1"
+    );
+    if (latest.rows.length && latest.rows[0].text === text) {
+      return res.status(400).json({ error: "No changes to save. The terms match the current version." });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO terms_versions (text) VALUES ($1)
+       RETURNING version, text, created_at AS "createdAt"`,
+      [text]
+    );
+    res.status(201).json({ terms: rows[0] });
+  } catch (error) {
+    console.error("Save terms failed:", error);
+    res.status(500).json({ error: "Could not save terms" });
+  }
+});
+
 app.get("/api/jobs", authRequired, async (_req, res) => {
   try {
     const { rows } = await pool.query(

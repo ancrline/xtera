@@ -206,6 +206,32 @@ const Api = {
     return job;
   },
 
+  async getTerms() {
+    const res = await fetch(`${API_BASE}/terms`, { credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Failed to load terms (${res.status})`);
+    return data.terms;
+  },
+
+  async listTermsVersions() {
+    const res = await fetch(`${API_BASE}/terms/versions`, { credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Failed to load terms history (${res.status})`);
+    return data.versions;
+  },
+
+  async saveTerms(text) {
+    const res = await fetch(`${API_BASE}/terms`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Failed to save terms (${res.status})`);
+    return data.terms;
+  },
+
   async listWorkTypes() {
     const res = await fetch(`${API_BASE}/work-types`, { credentials: 'include' });
     const data = await res.json().catch(() => ({}));
