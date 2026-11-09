@@ -113,8 +113,9 @@ ON CONFLICT (label) DO NOTHING;
 -- pbkdf2$<iterations>$<salt_hex>$<hash_hex>
 -- Generate a hash with: npm run hash -- "NewPassword"
 
--- Master admin account (full access). Seeded with the initial password "ChangeMe123!";
--- change it on the live DB. ON CONFLICT leaves an existing account untouched.
-INSERT INTO users (name, email, password_hash, role) VALUES
-  ('Admin User', 'admin@xtera.co.nz', 'pbkdf2$120000$6d2b8d60f4e2c12af4cd17e1b9c53fa2$4e1f2c70d8d731557664e672b83cf82ed63b54a1dc36b36527c2376d50a77b96', 'admin')
-ON CONFLICT (email) DO NOTHING;
+-- No users are seeded. Create the first admin manually (never commit a password):
+--   1. cd backend && npm run hash -- "YourPassword"
+--   2. Run in psql (single quotes, interactive session so $ is not expanded):
+--      INSERT INTO users (name, email, password_hash, role)
+--      VALUES ('Bill Usman', 'infoxtera@gmail.com', '<paste hash>', 'admin')
+--      ON CONFLICT (email) DO NOTHING;

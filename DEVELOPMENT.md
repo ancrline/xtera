@@ -55,21 +55,17 @@
 
 ### Testing Login Locally
 
-Demo accounts from `schema.sql`:
-- **Email:** `admin@xtera.co.nz`
-- **Password:** `ChangeMe123!`
+`schema.sql` does not seed any users. Create an admin for local testing (see the hash steps below), for example:
+- **Email:** `infoxtera@gmail.com`
 - **Role:** admin
 
-- **Email:** `staff@xtera.co.nz`
-- **Password:** `ChangeMe123!`
-- **Role:** staff
-
-To use a different password:
+To create it (or change a password):
 ```bash
 npm run hash -- "YourNewPassword"
 # Copy the output hash and update the user in the database:
 psql postgresql://jobreports:dev_password_123@localhost:5432/jobreports_dev
-UPDATE users SET password_hash = 'paste_hash_here' WHERE email = 'admin@xtera.co.nz';
+-- First time: INSERT INTO users (name, email, password_hash, role) VALUES ('Bill Usman', 'infoxtera@gmail.com', 'paste_hash_here', 'admin');
+-- Later: UPDATE users SET password_hash = 'paste_hash_here' WHERE email = 'infoxtera@gmail.com';
 ```
 
 ## Frontend Development
