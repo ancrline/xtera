@@ -157,6 +157,9 @@ The deployment is automated via GitHub Actions (`.github/workflows/deploy.yml`):
 - `DATABASE_URL` - PostgreSQL connection string
 - `CLIENT_ORIGIN` - Frontend origin for CORS
 - `SESSION_SECRET` - Secret for signing sessions
+- `APP_BASE_URL` - Public site URL used in password reset links (`https://reports.xtera.co.nz`)
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` - SMTP login for reset emails (Gmail: `smtp.gmail.com`, `465`, `infoxtera@gmail.com`, and a Google App Password)
+- `MAIL_FROM` - Sender shown on emails, e.g. `XTERA Job Reports <infoxtera@gmail.com>`
 
 ## Troubleshooting
 

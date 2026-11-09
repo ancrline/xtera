@@ -2,8 +2,10 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import session from "express-session";
+import crypto from "crypto";
 import { pool, testDbConnection } from "./db.js";
-import { verifyPassword } from "./password.js";
+import { hashPassword, verifyPassword } from "./password.js";
+import { sendPasswordResetEmail } from "./mailer.js";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -113,6 +115,138 @@ app.post("/api/auth/logout", (req, res) => {
 
 app.get("/api/auth/me", authRequired, (req, res) => {
   res.json({ user: req.session.user });
+});
+
+const RESET_TTL_MINUTES = 120;
+const RESET_EMAIL_COOLDOWN_SECONDS = 60;
+const MIN_PASSWORD_LENGTH = 10;
+const appBaseUrl = (process.env.APP_BASE_URL || clientOrigin).replace(/\/+$/, "");
+
+function hashResetToken(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+// Simple in-memory limiter keyed by client IP; enough for a single-process API.
+function rateLimit({ windowMs, max }) {
+  const hits = new Map();
+  return (req, res, next) => {
+    const now = Date.now();
+    const key = req.ip;
+    const recent = (hits.get(key) || []).filter(t => now - t < windowMs);
+    if (recent.length >= max) {
+      return res.status(429).json({ error: "Too many requests. Please try again later." });
+    }
+    recent.push(now);
+    hits.set(key, recent);
+    if (hits.size > 5000) {
+      for (const [k, v] of hits) {
+        if (!v.some(t => now - t < windowMs)) hits.delete(k);
+      }
+    }
+    next();
+  };
+}
+
+const resetLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+
+app.post("/api/auth/forgot-password", resetLimiter, async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  // Same response whether or not the account exists, so emails can't be enumerated.
+  const genericResponse = {
+    ok: true,
+    message: "If an account exists for that email, a reset link has been sent."
+  };
+
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, name, email FROM users WHERE email = $1 LIMIT 1",
+      [email]
+    );
+    if (!rows.length) {
+      return res.json(genericResponse);
+    }
+    const user = rows[0];
+
+    const recent = await pool.query(
+      `SELECT 1 FROM password_resets
+       WHERE user_id = $1 AND created_at > now() - make_interval(secs => $2)
+       LIMIT 1`,
+      [user.id, RESET_EMAIL_COOLDOWN_SECONDS]
+    );
+    if (recent.rows.length) {
+      return res.json(genericResponse);
+    }
+
+    const token = crypto.randomBytes(32).toString("hex");
+    await pool.query("DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL", [user.id]);
+    await pool.query(
+      `INSERT INTO password_resets (user_id, token_hash, expires_at)
+       VALUES ($1, $2, now() + make_interval(mins => $3))`,
+      [user.id, hashResetToken(token), RESET_TTL_MINUTES]
+    );
+
+    const link = `${appBaseUrl}/app/reset-password.html?token=${token}`;
+    sendPasswordResetEmail({
+      to: user.email,
+      name: user.name,
+      link,
+      expiresMinutes: RESET_TTL_MINUTES
+    }).catch(mailError => {
+      console.error("Password reset email failed:", mailError.message);
+    });
+
+    res.json(genericResponse);
+  } catch (error) {
+    console.error("Forgot password failed:", error);
+    res.status(500).json({ error: "Could not process request" });
+  }
+});
+
+app.post("/api/auth/reset-password", resetLimiter, async (req, res) => {
+  const token = String(req.body?.token || "");
+  const password = String(req.body?.password || "");
+
+  if (!/^[a-f0-9]{64}$/.test(token)) {
+    return res.status(400).json({ error: "This reset link is invalid or has expired" });
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    // Marking the token used in the same statement stops a link being redeemed twice.
+    const { rows } = await client.query(
+      `UPDATE password_resets
+       SET used_at = now()
+       WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()
+       RETURNING user_id`,
+      [hashResetToken(token)]
+    );
+    if (!rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "This reset link is invalid or has expired" });
+    }
+
+    await client.query("UPDATE users SET password_hash = $1 WHERE id = $2", [
+      hashPassword(password),
+      rows[0].user_id
+    ]);
+    await client.query("DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL", [rows[0].user_id]);
+    await client.query("COMMIT");
+    res.json({ ok: true });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Reset password failed:", error);
+    res.status(500).json({ error: "Could not reset password" });
+  } finally {
+    client.release();
+  }
 });
 
 app.get("/api/jobs", authRequired, async (_req, res) => {
