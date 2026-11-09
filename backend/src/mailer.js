@@ -25,6 +25,24 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+export async function verifyMailer() {
+  const mailer = getTransport();
+  if (!mailer) {
+    console.warn(
+      "Mail: SMTP not configured (missing " +
+        ["SMTP_HOST", "SMTP_USER", "SMTP_PASS"].filter(k => !process.env[k]).join(", ") +
+        "). Password reset emails will not be sent."
+    );
+    return;
+  }
+  try {
+    await mailer.verify();
+    console.log(`Mail: SMTP ready (${process.env.SMTP_HOST}:${process.env.SMTP_PORT || 465} as ${process.env.SMTP_USER})`);
+  } catch (error) {
+    console.error(`Mail: SMTP check failed - ${error.code || ""} ${error.message}`);
+  }
+}
+
 export async function sendPasswordResetEmail({ to, name, link, expiresMinutes }) {
   const mailer = getTransport();
   if (!mailer) {
@@ -35,7 +53,7 @@ export async function sendPasswordResetEmail({ to, name, link, expiresMinutes })
   const safeName = escapeHtml(name);
   const safeLink = escapeHtml(link);
 
-  await mailer.sendMail({
+  const info = await mailer.sendMail({
     from,
     to,
     subject: "Reset your XTERA Job Reports password",
@@ -53,4 +71,8 @@ export async function sendPasswordResetEmail({ to, name, link, expiresMinutes })
       `<p>Or paste this link into your browser:<br>${safeLink}</p>` +
       `<p>If you didn't request this, you can ignore this email and your password will stay the same.</p>`
   });
+
+  console.log(
+    `Mail: reset email handed to SMTP for user (accepted: ${info.accepted.length}, rejected: ${info.rejected.length}, response: ${info.response})`
+  );
 }

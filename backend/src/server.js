@@ -5,7 +5,7 @@ import session from "express-session";
 import crypto from "crypto";
 import { pool, testDbConnection } from "./db.js";
 import { hashPassword, verifyPassword } from "./password.js";
-import { sendPasswordResetEmail } from "./mailer.js";
+import { sendPasswordResetEmail, verifyMailer } from "./mailer.js";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -178,6 +178,7 @@ app.post("/api/auth/forgot-password", resetLimiter, async (req, res) => {
       [user.id, RESET_EMAIL_COOLDOWN_SECONDS]
     );
     if (recent.rows.length) {
+      console.log("Password reset skipped: a link was already requested in the last minute");
       return res.json(genericResponse);
     }
 
@@ -404,4 +405,5 @@ app.use((_req, res) => {
 
 app.listen(port, "127.0.0.1", () => {
   console.log(`API listening on http://127.0.0.1:${port}`);
+  verifyMailer();
 });
