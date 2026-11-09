@@ -206,6 +206,23 @@ const Api = {
     return job;
   },
 
+  async sendTermsEmail(jobId) {
+    const res = await fetch(`${API_BASE}/jobs/${jobId}/send-terms`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Failed to send email (${res.status})`);
+    return data.job;
+  },
+
+  async getJobByToken(token) {
+    const res = await fetch(`${API_BASE}/jobs/accept/${encodeURIComponent(token)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Invalid or expired link (${res.status})`);
+    return data;
+  },
+
   async getTerms() {
     const res = await fetch(`${API_BASE}/terms`, { credentials: 'include' });
     const data = await res.json().catch(() => ({}));

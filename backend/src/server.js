@@ -5,7 +5,7 @@ import session from "express-session";
 import crypto from "crypto";
 import { pool, testDbConnection } from "./db.js";
 import { hashPassword, verifyPassword } from "./password.js";
-import { sendPasswordResetEmail, verifyMailer } from "./mailer.js";
+import { sendPasswordResetEmail, sendJobTermsEmail, verifyMailer } from "./mailer.js";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -430,24 +430,230 @@ app.get("/api/jobs", authRequired, async (_req, res) => {
   }
 });
 
+const JOB_DETAIL_SQL = `
+  SELECT id, job_number AS "jobNumber", client_name AS "clientName", client_email AS "clientEmail",
+         client_phone AS "clientPhone", property_address AS "propertyAddress", work_type AS "workType",
+         description, status, token, terms_sent_at AS "termsSentAt", terms_version AS "termsVersion",
+         accepted_by AS "acceptedBy", accepted_at AS "acceptedAt", accepted_terms_version AS "acceptedTermsVersion",
+         created_by AS "createdBy", created_at AS "createdAt"
+  FROM jobs`;
+
+function withAcceptance(row) {
+  const { acceptedBy, acceptedAt, acceptedTermsVersion, ...job } = row;
+  job.acceptance = acceptedAt
+    ? { acceptedBy, acceptedAt, termsVersion: acceptedTermsVersion }
+    : null;
+  return job;
+}
+
+// The job page expects notes, images and history alongside the job itself.
+async function loadJobDetail(id) {
+  const { rows } = await pool.query(`${JOB_DETAIL_SQL} WHERE id = $1`, [id]);
+  if (!rows.length) return null;
+  const notes = await pool.query(
+    `SELECT id, author, text, created_at AS "createdAt"
+     FROM job_notes WHERE job_id = $1 ORDER BY created_at, id`,
+    [id]
+  );
+  const history = await pool.query(
+    `SELECT event, actor AS "by", created_at AS "at"
+     FROM job_history WHERE job_id = $1 ORDER BY created_at, id`,
+    [id]
+  );
+  return { ...withAcceptance(rows[0]), notes: notes.rows, images: [], history: history.rows };
+}
+
 app.get("/api/jobs/:id", authRequired, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(404).json({ error: "Job not found" });
   try {
-    const { id } = req.params;
-    const { rows } = await pool.query(
-      `SELECT id, job_number AS "jobNumber", client_name AS "clientName", client_email AS "clientEmail",
-              client_phone AS "clientPhone", property_address AS "propertyAddress", work_type AS "workType",
-              description, status, token, terms_sent_at AS "termsSentAt", terms_version AS "termsVersion",
-              accepted_by AS "acceptedBy", accepted_at AS "acceptedAt", accepted_terms_version AS "acceptedTermsVersion",
-              created_by AS "createdBy", created_at AS "createdAt"
-       FROM jobs
-       WHERE id = $1`,
-      [id]
-    );
-    if (!rows.length) return res.status(404).json({ error: "Job not found" });
-    res.json({ job: rows[0] });
+    const job = await loadJobDetail(id);
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    res.json({ job });
   } catch (error) {
     console.error("Get job failed:", error);
     res.status(500).json({ error: "Could not load job" });
+  }
+});
+
+function buildTermsEmail(job, settings, link) {
+  return {
+    subject: `${settings.companyName} — Job ${job.jobNumber}: please review and accept our terms`,
+    text:
+`Hi ${job.clientName},
+
+Thank you for choosing ${settings.companyName}.
+
+Your job "${job.workType}" at ${job.propertyAddress} (Job ${job.jobNumber}) has been scheduled for review.
+
+Before we begin, please review and accept our terms and conditions using the secure link below:
+
+${link}
+
+If you have any questions, reply to this email or call us on ${settings.phone}.
+
+Kind regards,
+${settings.companyName}
+${settings.email} | ${settings.phone} | ${settings.website}`
+  };
+}
+
+app.post("/api/jobs/:id/send-terms", authRequired, adminRequired, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(404).json({ error: "Job not found" });
+
+  try {
+    const jobResult = await pool.query(
+      `SELECT id, job_number AS "jobNumber", client_name AS "clientName", client_email AS "clientEmail",
+              property_address AS "propertyAddress", work_type AS "workType", token, accepted_at AS "acceptedAt"
+       FROM jobs WHERE id = $1`,
+      [id]
+    );
+    if (!jobResult.rows.length) return res.status(404).json({ error: "Job not found" });
+    const job = jobResult.rows[0];
+
+    const terms = await pool.query("SELECT version FROM terms_versions ORDER BY version DESC LIMIT 1");
+    if (!terms.rows.length) {
+      return res.status(400).json({ error: "Save your terms & conditions in Settings before sending them to a client." });
+    }
+    const settingsResult = await pool.query(
+      `SELECT company_name AS "companyName", email, phone, website FROM settings WHERE id = 1`
+    );
+    const settings = settingsResult.rows[0];
+
+    const link = `${appBaseUrl}/client-accept.html?token=${job.token}`;
+    const email = buildTermsEmail(job, settings, link);
+
+    let sent = true;
+    let sendError = null;
+    try {
+      await sendJobTermsEmail({ to: job.clientEmail, subject: email.subject, text: email.text, link, replyTo: settings.email });
+    } catch (error) {
+      sent = false;
+      sendError = error;
+      console.error("Terms email failed:", error.message);
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        "INSERT INTO email_log (job_id, recipient, subject, link, success) VALUES ($1, $2, $3, $4, $5)",
+        [id, job.clientEmail, email.subject, link, sent]
+      );
+      if (sent) {
+        // A resend after acceptance only re-sends the link; the accepted version stays recorded.
+        await client.query(
+          `UPDATE jobs
+           SET terms_sent_at = now(),
+               terms_version = CASE WHEN accepted_at IS NULL THEN $2 ELSE terms_version END,
+               status = CASE WHEN status = 'Draft' THEN 'Awaiting acceptance' ELSE status END
+           WHERE id = $1`,
+          [id, terms.rows[0].version]
+        );
+        await client.query(
+          "INSERT INTO job_history (job_id, event, actor) VALUES ($1, $2, $3)",
+          [id, `Terms & conditions emailed to ${job.clientEmail}`, req.session.user.name]
+        );
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    if (!sent) {
+      return res.status(502).json({ error: "The email could not be sent. Please check the email settings and try again." });
+    }
+    res.json({ job: await loadJobDetail(id) });
+  } catch (error) {
+    console.error("Send terms failed:", error);
+    res.status(500).json({ error: "Could not send terms" });
+  }
+});
+
+const acceptLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60 });
+const TOKEN_PATTERN = /^[a-f0-9]{48}$/;
+
+// What a client may see from their emailed link: no contact details, no internal fields.
+function publicJob(row) {
+  return {
+    jobNumber: row.jobNumber,
+    clientName: row.clientName,
+    propertyAddress: row.propertyAddress,
+    workType: row.workType,
+    description: row.description,
+    createdAt: row.createdAt,
+    acceptance: row.acceptedAt
+      ? { acceptedBy: row.acceptedBy, acceptedAt: row.acceptedAt, termsVersion: row.acceptedTermsVersion }
+      : null
+  };
+}
+
+const PUBLIC_JOB_SQL = `
+  SELECT id, job_number AS "jobNumber", client_name AS "clientName", property_address AS "propertyAddress",
+         work_type AS "workType", description, created_at AS "createdAt",
+         terms_version AS "termsVersion", accepted_by AS "acceptedBy", accepted_at AS "acceptedAt",
+         accepted_terms_version AS "acceptedTermsVersion"
+  FROM jobs
+  WHERE token = $1 AND terms_sent_at IS NOT NULL`;
+
+app.get("/api/jobs/accept/:token", acceptLimiter, async (req, res) => {
+  const token = String(req.params.token || "");
+  if (!TOKEN_PATTERN.test(token)) return res.status(404).json({ error: "Invalid or expired link" });
+
+  try {
+    const { rows } = await pool.query(PUBLIC_JOB_SQL, [token]);
+    if (!rows.length) return res.status(404).json({ error: "Invalid or expired link" });
+    const row = rows[0];
+
+    const version = row.acceptedAt ? row.acceptedTermsVersion : row.termsVersion;
+    const terms = await pool.query("SELECT version, text FROM terms_versions WHERE version = $1", [version]);
+    if (!terms.rows.length) return res.status(404).json({ error: "Invalid or expired link" });
+
+    const settings = await pool.query(
+      `SELECT company_name AS "companyName", email, phone, website FROM settings WHERE id = 1`
+    );
+    res.json({ job: publicJob(row), terms: terms.rows[0], settings: settings.rows[0] });
+  } catch (error) {
+    console.error("Load accept page failed:", error);
+    res.status(500).json({ error: "Could not load this page" });
+  }
+});
+
+app.post("/api/jobs/accept/:token", acceptLimiter, async (req, res) => {
+  const token = String(req.params.token || "");
+  const name = String(req.body?.acceptedByName || "").trim();
+  if (!TOKEN_PATTERN.test(token)) return res.status(404).json({ error: "Invalid or expired link" });
+  if (!name || name.length > 190) {
+    return res.status(400).json({ error: "Please type your full name to accept." });
+  }
+
+  try {
+    // The conditions in WHERE make acceptance happen once, even if the button is clicked twice.
+    const update = await pool.query(
+      `UPDATE jobs
+       SET accepted_by = $2, accepted_at = now(), accepted_terms_version = terms_version,
+           status = CASE WHEN status IN ('Draft', 'Awaiting acceptance') THEN 'Accepted' ELSE status END
+       WHERE token = $1 AND terms_sent_at IS NOT NULL AND accepted_at IS NULL
+       RETURNING id`,
+      [token, name]
+    );
+    if (update.rows.length) {
+      await pool.query(
+        "INSERT INTO job_history (job_id, event, actor) VALUES ($1, $2, $3)",
+        [update.rows[0].id, "Terms & conditions accepted online", name]
+      );
+    }
+
+    const { rows } = await pool.query(PUBLIC_JOB_SQL, [token]);
+    if (!rows.length) return res.status(404).json({ error: "Invalid or expired link" });
+    res.json({ job: publicJob(rows[0]) });
+  } catch (error) {
+    console.error("Accept terms failed:", error);
+    res.status(500).json({ error: "Could not record your acceptance" });
   }
 });
 
@@ -487,7 +693,7 @@ app.post("/api/jobs", authRequired, async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id, job_number AS "jobNumber", client_name AS "clientName", client_email AS "clientEmail",
                  client_phone AS "clientPhone", property_address AS "propertyAddress", work_type AS "workType",
-                 description, status, created_by AS "createdBy", created_at AS "createdAt"`,
+                 description, status, token, created_by AS "createdBy", created_at AS "createdAt"`,
       [jobNumber, clientName, clientEmail, clientPhone, propertyAddress, workType, description || null, token, req.session.user.name]
     );
     await client.query(

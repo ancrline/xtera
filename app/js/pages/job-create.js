@@ -84,12 +84,12 @@ $(async function () {
         return;
       }
       Api.getSettings().then(settings => {
-        UI.showEmailPreview(job, settings, () =>
-          Api.sendTermsEmail(job.id).then(() => {
-            window.location.href = "job-detail.html?id=" + job.id;
-          })
-        );
-      });
+        // The job exists now, so closing the preview must not leave the form open to a duplicate.
+        $("#emailPreviewModal").one("hidden.bs.modal", () => {
+          window.location.href = "job-detail.html?id=" + job.id;
+        });
+        UI.showEmailPreview(job, settings, () => Api.sendTermsEmail(job.id));
+      }).catch(err => UI.toast(err.message, "danger"));
     }).catch(err => UI.toast(err.message, "danger"));
   });
 

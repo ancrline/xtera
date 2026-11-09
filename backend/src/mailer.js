@@ -43,6 +43,30 @@ export async function verifyMailer() {
   }
 }
 
+export async function sendJobTermsEmail({ to, subject, text, link, replyTo }) {
+  const mailer = getTransport();
+  if (!mailer) {
+    throw new Error("SMTP is not configured (SMTP_HOST, SMTP_USER, SMTP_PASS)");
+  }
+
+  const safeLink = escapeHtml(link);
+  const html =
+    `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#222;">` +
+    escapeHtml(text).replace(safeLink, `<a href="${safeLink}">${safeLink}</a>`).replace(/\n/g, "<br>") +
+    `<p><a href="${safeLink}" style="display:inline-block;padding:10px 18px;background:#0d6efd;color:#fff;text-decoration:none;border-radius:6px;">Review &amp; accept terms</a></p>` +
+    `</div>`;
+
+  const info = await mailer.sendMail({
+    from: process.env.MAIL_FROM || process.env.SMTP_USER,
+    to,
+    replyTo: replyTo || undefined,
+    subject,
+    text,
+    html
+  });
+  console.log(`Mail: terms email handed to SMTP (accepted: ${info.accepted.length}, rejected: ${info.rejected.length})`);
+}
+
 export async function sendPasswordResetEmail({ to, name, link, expiresMinutes }) {
   const mailer = getTransport();
   if (!mailer) {
