@@ -166,12 +166,12 @@ const Api = {
     return notes;
   },
 
-  async addImage(jobId, { kind, dataUrl, caption }) {
+  async addImage(jobId, { kind, dataUrl, caption, pairNo }) {
     const res = await fetch(`${API_BASE}/jobs/${jobId}/images`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind, dataUrl, caption })
+      body: JSON.stringify({ kind, dataUrl, caption, pairNo })
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {

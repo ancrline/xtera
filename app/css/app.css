@@ -252,6 +252,10 @@ body {
   border: 1px solid rgba(20, 37, 54, 0.1);
 }
 
+.report-pair {
+  break-inside: avoid;
+}
+
 @media print {
   body { background: #fff; }
   .no-print { display: none !important; }

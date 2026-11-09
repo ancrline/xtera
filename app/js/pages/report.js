@@ -50,19 +50,21 @@ $(async function () {
         $("#notesSection").html('<p class="text-muted mb-0">No notes recorded.</p>');
       }
 
-      const before = job.images.filter(i => i.kind === "before");
-      const after = job.images.filter(i => i.kind === "after");
       if (job.images.length) {
-        const col = imgs => imgs.map(i => `
-          <div class="report-photo mb-3">
-            <img src="${i.dataUrl}" alt="${i.kind} photo">
-            <div class="text-muted-small mt-1">${UI.escapeHtml(i.uploadedBy)} · ${UI.fmtDateTime(i.createdAt)}</div>
-          </div>`).join("");
-        $("#photosSection").html(`
-          <div class="row">
-            <div class="col-md-6"><h2 class="h6">Before</h2>${col(before) || '<p class="text-muted">None</p>'}</div>
-            <div class="col-md-6"><h2 class="h6">After</h2>${col(after) || '<p class="text-muted">None</p>'}</div>
-          </div>`);
+        const slot = img => img
+          ? `<div class="report-photo">
+               <img src="${img.dataUrl}" alt="${img.kind} photo">
+               <div class="text-muted-small mt-1">${UI.escapeHtml(img.uploadedBy)} · ${UI.fmtDateTime(img.createdAt)}</div>
+             </div>`
+          : '<p class="text-muted">Not added yet</p>';
+        $("#photosSection").html(UI.groupPhotoPairs(job.images).map(p => `
+          <div class="report-pair mb-4">
+            <h2 class="h6">Pair ${p.pairNo}</h2>
+            <div class="row">
+              <div class="col-6"><div class="small fw-semibold mb-1">Before</div>${slot(p.before)}</div>
+              <div class="col-6"><div class="small fw-semibold mb-1">After</div>${slot(p.after)}</div>
+            </div>
+          </div>`).join(""));
       } else {
         $("#photosSection").html('<p class="text-muted mb-0">No photos uploaded.</p>');
       }

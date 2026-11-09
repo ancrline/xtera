@@ -461,8 +461,8 @@ async function loadJobDetail(id) {
     [id]
   );
   const images = await pool.query(
-    `SELECT id, kind, caption, uploaded_by AS "uploadedBy", created_at AS "createdAt"
-     FROM job_images WHERE job_id = $1 ORDER BY created_at, id`,
+    `SELECT id, kind, pair_no AS "pairNo", caption, uploaded_by AS "uploadedBy", created_at AS "createdAt"
+     FROM job_images WHERE job_id = $1 ORDER BY pair_no, kind DESC, id`,
     [id]
   );
   // The page puts this straight into <img src>; the bytes are served by GET /api/images/:id.
@@ -827,6 +827,13 @@ app.post("/api/jobs/:id/images", authRequired, async (req, res) => {
   const kind = req.body?.kind;
   const dataUrl = String(req.body?.dataUrl || "");
   const caption = String(req.body?.caption || "").trim().slice(0, 255);
+  let pairNo = null;
+  if (req.body?.pairNo !== undefined && req.body?.pairNo !== null) {
+    pairNo = Number(req.body.pairNo);
+    if (!Number.isInteger(pairNo) || pairNo < 1 || pairNo > 1000) {
+      return res.status(400).json({ error: "Invalid photo pair" });
+    }
+  }
   if (!["before", "after"].includes(kind)) {
     return res.status(400).json({ error: "Photo type must be before or after" });
   }
@@ -840,29 +847,72 @@ app.post("/api/jobs/:id/images", authRequired, async (req, res) => {
     return res.status(413).json({ error: "That photo is too large (max 3 MB)" });
   }
 
+  const client = await pool.connect();
   try {
-    const job = await pool.query("SELECT 1 FROM jobs WHERE id = $1", [id]);
-    if (!job.rows.length) return res.status(404).json({ error: "Job not found" });
+    await client.query("BEGIN");
+    const job = await client.query("SELECT 1 FROM jobs WHERE id = $1", [id]);
+    if (!job.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Job not found" });
+    }
+    // One upload at a time per job, so two phones can't claim the same pair number.
+    await client.query("SELECT pg_advisory_xact_lock(7302, $1)", [id]);
 
-    const count = await pool.query("SELECT count(*)::int AS n FROM job_images WHERE job_id = $1", [id]);
+    const count = await client.query("SELECT count(*)::int AS n FROM job_images WHERE job_id = $1", [id]);
     if (count.rows[0].n >= MAX_IMAGES_PER_JOB) {
+      await client.query("ROLLBACK");
       return res.status(400).json({ error: `A job can have at most ${MAX_IMAGES_PER_JOB} photos` });
     }
 
-    const { rows } = await pool.query(
-      `INSERT INTO job_images (job_id, kind, mime_type, data, caption, uploaded_by)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, kind, caption, uploaded_by AS "uploadedBy", created_at AS "createdAt"`,
-      [id, kind, mimeType, bytes, caption, req.session.user.name]
+    if (pairNo === null) {
+      // A new before photo starts a new pair; an after photo fills the first pair still missing one.
+      const next = await client.query(
+        kind === "before"
+          ? "SELECT COALESCE(MAX(pair_no), 0) + 1 AS n FROM job_images WHERE job_id = $1"
+          : `SELECT COALESCE(
+               (SELECT MIN(p.pair_no) FROM (SELECT DISTINCT pair_no FROM job_images WHERE job_id = $1) p
+                WHERE NOT EXISTS (SELECT 1 FROM job_images a WHERE a.job_id = $1 AND a.pair_no = p.pair_no AND a.kind = 'after')),
+               (SELECT COALESCE(MAX(pair_no), 0) + 1 FROM job_images WHERE job_id = $1)
+             ) AS n`,
+        [id]
+      );
+      pairNo = next.rows[0].n;
+    } else {
+      const pair = await client.query(
+        "SELECT bool_or(kind = $3) AS slot_taken FROM job_images WHERE job_id = $1 AND pair_no = $2",
+        [id, pairNo, kind]
+      );
+      if (pair.rows[0].slot_taken === null) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "That photo pair doesn't exist. Refresh the page and try again." });
+      }
+      if (pair.rows[0].slot_taken) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: `Pair ${pairNo} already has ${kind === "after" ? "an after" : "a before"} photo. Delete it first to replace it.` });
+      }
+    }
+
+    const { rows } = await client.query(
+      `INSERT INTO job_images (job_id, kind, pair_no, mime_type, data, caption, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, kind, pair_no AS "pairNo", caption, uploaded_by AS "uploadedBy", created_at AS "createdAt"`,
+      [id, kind, pairNo, mimeType, bytes, caption, req.session.user.name]
     );
-    await pool.query(
+    await client.query(
       "INSERT INTO job_history (job_id, event, actor) VALUES ($1, $2, $3)",
-      [id, `${kind === "before" ? "Before" : "After"} photo added`, req.session.user.name]
+      [id, `${kind === "before" ? "Before" : "After"} photo added (pair ${pairNo})`, req.session.user.name]
     );
+    await client.query("COMMIT");
     res.status(201).json({ image: { ...rows[0], dataUrl: `/api/images/${rows[0].id}` } });
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error.code === "23505") {
+      return res.status(409).json({ error: "That photo slot was just filled. Refresh the page and try again." });
+    }
     console.error("Add image failed:", error);
     res.status(500).json({ error: "Could not save the photo" });
+  } finally {
+    client.release();
   }
 });
 
@@ -891,7 +941,7 @@ app.delete("/api/images/:id", authRequired, async (req, res) => {
 
   try {
     const found = await pool.query(
-      `SELECT job_id AS "jobId", kind, uploaded_by AS "uploadedBy" FROM job_images WHERE id = $1`,
+      `SELECT job_id AS "jobId", kind, pair_no AS "pairNo", uploaded_by AS "uploadedBy" FROM job_images WHERE id = $1`,
       [id]
     );
     if (!found.rows.length) return res.status(404).json({ error: "Photo not found" });
@@ -905,7 +955,7 @@ app.delete("/api/images/:id", authRequired, async (req, res) => {
     await pool.query("DELETE FROM job_images WHERE id = $1", [id]);
     await pool.query(
       "INSERT INTO job_history (job_id, event, actor) VALUES ($1, $2, $3)",
-      [image.jobId, `${image.kind === "before" ? "Before" : "After"} photo deleted`, user.name]
+      [image.jobId, `${image.kind === "before" ? "Before" : "After"} photo deleted (pair ${image.pairNo})`, user.name]
     );
     res.json({ ok: true });
   } catch (error) {

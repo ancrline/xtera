@@ -103,11 +103,34 @@ $(async function () {
       </div>`;
   }
 
+  function photoSlot(pair, kind) {
+    const img = pair[kind];
+    if (img) return photoCard(img);
+    const label = kind === "before" ? "Add before photo" : "Add after photo";
+    const hint = kind === "after" ? '<div class="small mb-2">Not added yet</div>' : "";
+    return `
+      <div class="photo-empty flex-column">
+        ${hint}
+        <button type="button" class="btn btn-outline-primary btn-sm add-photo-btn" data-kind="${kind}" data-pair="${pair.pairNo}">
+          <i class="bi bi-camera me-1"></i> ${label}
+        </button>
+      </div>`;
+  }
+
   function renderPhotos() {
-    const before = job.images.filter(i => i.kind === "before");
-    const after = job.images.filter(i => i.kind === "after");
-    $("#beforePhotos").html(before.length ? before.map(photoCard).join("") : '<div class="photo-empty">No before photos yet</div>');
-    $("#afterPhotos").html(after.length ? after.map(photoCard).join("") : '<div class="photo-empty">No after photos yet</div>');
+    const pairs = UI.groupPhotoPairs(job.images);
+    if (!pairs.length) {
+      $("#photoPairs").html('<div class="photo-empty mb-3">No photos yet. Add a before photo to start your first pair.</div>');
+      return;
+    }
+    $("#photoPairs").html(pairs.map(p => `
+      <div class="photo-pair mb-4">
+        <h2 class="h6 text-muted mb-2">Pair ${p.pairNo}</h2>
+        <div class="row g-3">
+          <div class="col-6"><div class="small fw-semibold mb-1">Before</div>${photoSlot(p, "before")}</div>
+          <div class="col-6"><div class="small fw-semibold mb-1">After</div>${photoSlot(p, "after")}</div>
+        </div>
+      </div>`).join(""));
   }
 
   function renderHistory() {
@@ -145,21 +168,32 @@ $(async function () {
     }).catch(err => UI.toast(err.message, "danger"));
   });
 
-  $("input[type=file][data-kind]").on("change", function () {
+  // One hidden file picker serves every "Add photo" button; the button says which slot it is for.
+  let pendingUpload = null;
+
+  $("#jobMain").on("click", ".add-photo-btn", function () {
+    pendingUpload = { kind: $(this).data("kind"), pairNo: $(this).data("pair") || undefined };
+    $("#photoInput").trigger("click");
+  });
+
+  $("#photoInput").on("change", function () {
     const file = this.files[0];
-    const kind = $(this).data("kind");
+    const target = pendingUpload;
     $(this).val("");
-    if (!file) return;
+    pendingUpload = null;
+    if (!file || !target) return;
+    $(".add-photo-btn").prop("disabled", true);
     UI.readFileAsDataUrl(file)
-      .then(dataUrl => Api.addImage(job.id, { kind, dataUrl }))
+      .then(dataUrl => Api.addImage(job.id, { kind: target.kind, dataUrl, pairNo: target.pairNo }))
       .then(() => Api.getJob(job.id))
       .then(updated => {
         job = updated;
         renderPhotos();
         renderHistory();
-        UI.toast(kind.charAt(0).toUpperCase() + kind.slice(1) + " photo added.");
+        UI.toast(target.kind.charAt(0).toUpperCase() + target.kind.slice(1) + " photo added.");
       })
-      .catch(err => UI.toast(err.message, "danger"));
+      .catch(err => UI.toast(err.message, "danger"))
+      .finally(() => $(".add-photo-btn").prop("disabled", false));
   });
 
   $("#jobMain").on("click", ".photo-delete", function () {

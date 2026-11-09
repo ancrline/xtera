@@ -149,6 +149,17 @@ ${settings.email} | ${settings.phone} | ${settings.website}`
     modal.show();
   },
 
+  // Photos come as a flat list; group them into numbered before/after pairs.
+  groupPhotoPairs(images) {
+    const pairs = {};
+    images.forEach(img => {
+      const key = img.pairNo || 0;
+      if (!pairs[key]) pairs[key] = { pairNo: key, before: null, after: null };
+      pairs[key][img.kind] = img;
+    });
+    return Object.values(pairs).sort((a, b) => a.pairNo - b.pairNo);
+  },
+
   readFileAsDataUrl(file, maxSize = 1200) {
     // Always shrink and re-encode so uploads stay small (phone photos are several MB).
     // WebP keeps the same visual quality at roughly 25-35% less size than JPEG.

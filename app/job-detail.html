@@ -8,7 +8,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/app.css?v=2">
+  <link rel="stylesheet" href="css/app.css?v=3">
 </head>
 <body>
   <div id="appNavbar"></div>
@@ -61,28 +61,12 @@
         <div class="card mb-4">
           <div class="card-header">Before &amp; after photos</div>
           <div class="card-body">
-            <div class="row g-4">
-              <div class="col-md-6">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                  <h2 class="h6 mb-0">Before</h2>
-                  <label class="btn btn-outline-primary btn-sm mb-0">
-                    <i class="bi bi-camera me-1"></i> Add photo
-                    <input type="file" accept="image/*" class="d-none" data-kind="before">
-                  </label>
-                </div>
-                <div id="beforePhotos" class="d-grid gap-3"></div>
-              </div>
-              <div class="col-md-6">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                  <h2 class="h6 mb-0">After</h2>
-                  <label class="btn btn-outline-primary btn-sm mb-0">
-                    <i class="bi bi-camera me-1"></i> Add photo
-                    <input type="file" accept="image/*" class="d-none" data-kind="after">
-                  </label>
-                </div>
-                <div id="afterPhotos" class="d-grid gap-3"></div>
-              </div>
-            </div>
+            <div id="photoPairs"></div>
+            <button type="button" class="btn btn-outline-primary btn-sm add-photo-btn" id="addPairBtn" data-kind="before">
+              <i class="bi bi-plus-lg me-1"></i> Add before photo (new pair)
+            </button>
+            <p class="text-muted-small mt-2 mb-0">Each pair is one before and one after photo. You can add the after photo later, once the work is done.</p>
+            <input type="file" accept="image/*" class="d-none" id="photoInput">
           </div>
         </div>
       </div>
@@ -143,9 +127,9 @@
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="js/mockData.js"></script>
-  <script src="js/api.js?v=10"></script>
+  <script src="js/api.js?v=12"></script>
   <script src="js/auth.js"></script>
-  <script src="js/common.js?v=11"></script>
-  <script src="js/pages/job-detail.js?v=10"></script>
+  <script src="js/common.js?v=12"></script>
+  <script src="js/pages/job-detail.js?v=12"></script>
 </body>
 </html>

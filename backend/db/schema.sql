@@ -84,12 +84,23 @@ CREATE TABLE IF NOT EXISTS job_images (
   data        BYTEA NULL,
   caption     VARCHAR(255) NOT NULL DEFAULT '',
   uploaded_by VARCHAR(120) NOT NULL,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  pair_no     INTEGER NULL
 );
 -- Upgrade for databases created before photos were stored in the database.
 ALTER TABLE job_images ADD COLUMN IF NOT EXISTS mime_type VARCHAR(50) NULL;
 ALTER TABLE job_images ADD COLUMN IF NOT EXISTS data BYTEA NULL;
 ALTER TABLE job_images ALTER COLUMN file_path DROP NOT NULL;
+-- Before/after photos are grouped into numbered pairs per job (one photo per slot).
+ALTER TABLE job_images ADD COLUMN IF NOT EXISTS pair_no INTEGER NULL;
+UPDATE job_images i
+SET pair_no = r.rn
+FROM (
+  SELECT id, ROW_NUMBER() OVER (PARTITION BY job_id, kind ORDER BY created_at, id) AS rn
+  FROM job_images
+) r
+WHERE i.id = r.id AND i.pair_no IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_images_pair_slot ON job_images (job_id, pair_no, kind);
 CREATE INDEX IF NOT EXISTS idx_images_job ON job_images (job_id);
 
 CREATE TABLE IF NOT EXISTS job_history (
