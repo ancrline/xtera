@@ -81,18 +81,19 @@ $(async function () {
           <td>${UI.escapeHtml(u.email)}</td>
           <td><span class="badge ${u.role === "admin" ? "bg-primary" : "bg-secondary"}">${UI.escapeHtml(u.role)}</span></td>
         </tr>`).join(""));
-    });
+    }).catch(err => UI.toast(err.message, "danger"));
   }
 
   $("#userForm").on("submit", function (e) {
     e.preventDefault();
+    const form = this;
     Api.addUser({
       name: $("#userName").val().trim(),
       email: $("#userEmail").val().trim(),
-      password: $("#userPassword").val().trim(),
+      password: $("#userPassword").val(),
       role: $("#userRole").val()
     }).then(() => {
-      this.reset();
+      form.reset();
       loadUsers();
       UI.toast("User added.");
     }).catch(err => UI.toast(err.message, "danger"));
@@ -112,8 +113,12 @@ $(async function () {
     });
   }
 
-  loadTerms();
-  loadWorkTypes();
-  loadUsers();
-  loadEmailLog();
+  // Each section loads independently so one unavailable API can't block the others.
+  [loadTerms, loadWorkTypes, loadUsers, loadEmailLog].forEach(load => {
+    try {
+      load();
+    } catch (e) {
+      console.warn("Settings section failed to load:", e.message);
+    }
+  });
 });

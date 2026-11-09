@@ -250,6 +250,61 @@ app.post("/api/auth/reset-password", resetLimiter, async (req, res) => {
   }
 });
 
+function adminRequired(req, res, next) {
+  if (req.session.user?.role !== "admin") {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+  next();
+}
+
+app.get("/api/users", authRequired, adminRequired, async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, name, email, role FROM users ORDER BY created_at, id"
+    );
+    res.json({ users: rows });
+  } catch (error) {
+    console.error("List users failed:", error);
+    res.status(500).json({ error: "Could not load users" });
+  }
+});
+
+app.post("/api/users", authRequired, adminRequired, async (req, res) => {
+  const name = String(req.body?.name || "").trim();
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const password = String(req.body?.password || "");
+  const role = String(req.body?.role || "staff");
+
+  if (!name || name.length > 120) {
+    return res.status(400).json({ error: "Name is required (max 120 characters)" });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 190) {
+    return res.status(400).json({ error: "A valid email address is required" });
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+  }
+  if (!["admin", "staff"].includes(role)) {
+    return res.status(400).json({ error: "Role must be admin or staff" });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO users (name, email, password_hash, role)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, name, email, role`,
+      [name, email, hashPassword(password), role]
+    );
+    res.status(201).json({ user: rows[0] });
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ error: "A user with that email already exists" });
+    }
+    console.error("Add user failed:", error);
+    res.status(500).json({ error: "Could not add user" });
+  }
+});
+
 app.get("/api/jobs", authRequired, async (_req, res) => {
   try {
     const { rows } = await pool.query(

@@ -206,6 +206,25 @@ const Api = {
     return job;
   },
 
+  async listUsers() {
+    const res = await fetch(`${API_BASE}/users`, { credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Failed to load users (${res.status})`);
+    return data.users;
+  },
+
+  async addUser(payload) {
+    const res = await fetch(`${API_BASE}/users`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Failed to add user (${res.status})`);
+    return data.user;
+  },
+
   async getSettings() {
     const res = await fetch(`${API_BASE}/settings`, {
       credentials: 'include'
