@@ -452,11 +452,37 @@ app.get("/api/jobs/:id", authRequired, async (req, res) => {
 });
 
 app.post("/api/jobs", authRequired, async (req, res) => {
+  const clean = value => String(value ?? "").trim();
+  const clientName = clean(req.body?.clientName);
+  const clientEmail = clean(req.body?.clientEmail);
+  const clientPhone = clean(req.body?.clientPhone);
+  const propertyAddress = clean(req.body?.propertyAddress);
+  const workType = clean(req.body?.workType);
+  const description = clean(req.body?.description);
+
+  if (!clientName || !clientEmail || !clientPhone || !propertyAddress || !workType) {
+    return res.status(400).json({ error: "Client name, email, phone, property address and work type are required" });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) {
+    return res.status(400).json({ error: "A valid client email address is required" });
+  }
+  if (clientName.length > 190 || clientEmail.length > 190 || clientPhone.length > 60 ||
+      propertyAddress.length > 255 || workType.length > 120) {
+    return res.status(400).json({ error: "One of the fields is too long" });
+  }
+
+  const token = crypto.randomBytes(24).toString("hex");
+  const client = await pool.connect();
   try {
-    const { jobNumber, clientName, clientEmail, clientPhone, propertyAddress, workType, description } = req.body;
-    const token = require("crypto").randomBytes(24).toString("hex");
-    
-    const { rows } = await pool.query(
+    await client.query("BEGIN");
+    // Serialise job-number assignment so two jobs created together can't share a number.
+    await client.query("SELECT pg_advisory_xact_lock(7301)");
+    const next = await client.query(
+      `SELECT COALESCE(MAX(NULLIF(regexp_replace(job_number, '\\D', '', 'g'), '')::int), 0) + 1 AS n FROM jobs`
+    );
+    const jobNumber = "XT-" + String(next.rows[0].n).padStart(4, "0");
+
+    const { rows } = await client.query(
       `INSERT INTO jobs (job_number, client_name, client_email, client_phone, property_address, work_type, description, token, created_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id, job_number AS "jobNumber", client_name AS "clientName", client_email AS "clientEmail",
@@ -464,10 +490,18 @@ app.post("/api/jobs", authRequired, async (req, res) => {
                  description, status, created_by AS "createdBy", created_at AS "createdAt"`,
       [jobNumber, clientName, clientEmail, clientPhone, propertyAddress, workType, description || null, token, req.session.user.name]
     );
-    res.json({ job: rows[0] });
+    await client.query(
+      "INSERT INTO job_history (job_id, event, actor) VALUES ($1, $2, $3)",
+      [rows[0].id, "Job created", req.session.user.name]
+    );
+    await client.query("COMMIT");
+    res.status(201).json({ job: rows[0] });
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
     console.error("Create job failed:", error);
     res.status(500).json({ error: "Could not create job" });
+  } finally {
+    client.release();
   }
 });
 
